@@ -1,0 +1,196 @@
+import {
+  Agendamento,
+  ConfiguracaoClinica,
+  ConfiguracaoInter,
+  EvolucaoClinica,
+  Paciente,
+  Procedimento,
+  TransacaoFinanceira,
+} from '../types';
+
+const STORAGE_KEYS = {
+  CLINICA: 'masso_clinica_config',
+  INTER: 'masso_inter_config',
+  PROCEDIMENTOS: 'masso_procedimentos',
+  PACIENTES: 'masso_pacientes',
+  EVOLUCOES: 'masso_evolucoes',
+  AGENDAMENTOS: 'masso_agendamentos',
+  FINANCEIRO: 'masso_financeiro',
+};
+
+export const DEFAULT_CLINICA: ConfiguracaoClinica = {
+  nomeClinica: 'Espaço Caroline Padela',
+  nomeTerapeuta: 'Caroline Padela',
+  registroProfissional: 'Massoterapeuta & Terapias Corporais',
+  especialidade: 'Massoterapia Clínica, Liberação Miofascial, Drenagem & Estética',
+  whatsapp: '11999999999',
+  email: 'contato@carolinepadela.com.br',
+  telefone: '(11) 99999-9999',
+  endereco: 'Espaço Terapêutico Caroline Padela',
+  cidadeUf: 'São Paulo - SP',
+  cnpjCpf: '',
+  logoUrl: '',
+  textoMarcaDagua: 'ESPAÇO CAROLINE PADELA • RELATÓRIO CLÍNICO DE EVOLUÇÃO',
+  mensagemWhatsappPadrao: 'Olá {nome}! Aqui é a Caroline Padela. Segue o seu relatório de evolução da nossa sessão com as orientações de autocuidado. Qualquer dúvida estou à disposição!',
+};
+
+export const DEFAULT_INTER: ConfiguracaoInter = {
+  chavePix: 'seu-email-ou-cnpj@inter.com.br',
+  tipoChavePix: 'email',
+  nomeTitular: 'CONSULTORIO DE MASSOTERAPIA',
+  cidadeTitular: 'SAO PAULO',
+  clientId: '',
+  clientSecret: '',
+  ambiente: 'producao',
+  webhookAtivo: true,
+};
+
+export const DEFAULT_PROCEDIMENTOS: Procedimento[] = [
+  {
+    id: 'proc-1',
+    nome: 'Massagem Relaxante com Aromaterapia',
+    categoria: 'massoterapia',
+    duracaoMinutos: 60,
+    precoTotal: 160,
+    sinalPercentual: 50,
+    valorSinal: 80,
+    descricao: 'Manobras suaves e envolventes com óleos essenciais para redução profunda de estresse e tensão muscular.',
+    corTag: '#10b981',
+    ativo: true,
+  },
+  {
+    id: 'proc-2',
+    nome: 'Massagem Terapêutica & Liberação Miofascial',
+    categoria: 'massoterapia',
+    duracaoMinutos: 60,
+    precoTotal: 190,
+    sinalPercentual: 50,
+    valorSinal: 95,
+    descricao: 'Terapia focada em desativação de pontos-gatilho (trigger points), contraturas crônicas e alívio de dores.',
+    corTag: '#0ea5e9',
+    ativo: true,
+  },
+  {
+    id: 'proc-3',
+    nome: 'Drenagem Linfática Manual (Método Vodder)',
+    categoria: 'massoterapia',
+    duracaoMinutos: 60,
+    precoTotal: 180,
+    sinalPercentual: 50,
+    valorSinal: 90,
+    descricao: 'Estimulação do sistema linfático para redução de edemas, retenção hídrica e melhora da circulação.',
+    corTag: '#8b5cf6',
+    ativo: true,
+  },
+  {
+    id: 'proc-4',
+    nome: 'Ventosaterapia Integrativa & Terapia Manual',
+    categoria: 'terapia_manual',
+    duracaoMinutos: 50,
+    precoTotal: 150,
+    sinalPercentual: 50,
+    valorSinal: 75,
+    descricao: 'Aplicação de ventosas para oxigenação tecidual, descolamento de fáscia e relaxamento muscular.',
+    corTag: '#f59e0b',
+    ativo: true,
+  },
+];
+
+export const DEFAULT_PACIENTES: Paciente[] = [];
+export const DEFAULT_EVOLUCOES: EvolucaoClinica[] = [];
+export const DEFAULT_AGENDAMENTOS: Agendamento[] = [];
+export const DEFAULT_FINANCEIRO: TransacaoFinanceira[] = [];
+
+// Storage accessor functions with automatic hydration
+export const StorageService = {
+  getClinica: (): ConfiguracaoClinica => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.CLINICA);
+      return data ? JSON.parse(data) : DEFAULT_CLINICA;
+    } catch {
+      return DEFAULT_CLINICA;
+    }
+  },
+
+  saveClinica: (config: ConfiguracaoClinica): void => {
+    localStorage.setItem(STORAGE_KEYS.CLINICA, JSON.stringify(config));
+  },
+
+  getInter: (): ConfiguracaoInter => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.INTER);
+      return data ? JSON.parse(data) : DEFAULT_INTER;
+    } catch {
+      return DEFAULT_INTER;
+    }
+  },
+
+  saveInter: (config: ConfiguracaoInter): void => {
+    localStorage.setItem(STORAGE_KEYS.INTER, JSON.stringify(config));
+  },
+
+  getProcedimentos: (): Procedimento[] => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.PROCEDIMENTOS);
+      return data ? JSON.parse(data) : DEFAULT_PROCEDIMENTOS;
+    } catch {
+      return DEFAULT_PROCEDIMENTOS;
+    }
+  },
+
+  saveProcedimentos: (list: Procedimento[]): void => {
+    localStorage.setItem(STORAGE_KEYS.PROCEDIMENTOS, JSON.stringify(list));
+  },
+
+  getPacientes: (): Paciente[] => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.PACIENTES);
+      return data ? JSON.parse(data) : DEFAULT_PACIENTES;
+    } catch {
+      return DEFAULT_PACIENTES;
+    }
+  },
+
+  savePacientes: (list: Paciente[]): void => {
+    localStorage.setItem(STORAGE_KEYS.PACIENTES, JSON.stringify(list));
+  },
+
+  getEvolucoes: (): EvolucaoClinica[] => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.EVOLUCOES);
+      return data ? JSON.parse(data) : DEFAULT_EVOLUCOES;
+    } catch {
+      return DEFAULT_EVOLUCOES;
+    }
+  },
+
+  saveEvolucoes: (list: EvolucaoClinica[]): void => {
+    localStorage.setItem(STORAGE_KEYS.EVOLUCOES, JSON.stringify(list));
+  },
+
+  getAgendamentos: (): Agendamento[] => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.AGENDAMENTOS);
+      return data ? JSON.parse(data) : DEFAULT_AGENDAMENTOS;
+    } catch {
+      return DEFAULT_AGENDAMENTOS;
+    }
+  },
+
+  saveAgendamentos: (list: Agendamento[]): void => {
+    localStorage.setItem(STORAGE_KEYS.AGENDAMENTOS, JSON.stringify(list));
+  },
+
+  getFinanceiro: (): TransacaoFinanceira[] => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.FINANCEIRO);
+      return data ? JSON.parse(data) : DEFAULT_FINANCEIRO;
+    } catch {
+      return DEFAULT_FINANCEIRO;
+    }
+  },
+
+  saveFinanceiro: (list: TransacaoFinanceira[]): void => {
+    localStorage.setItem(STORAGE_KEYS.FINANCEIRO, JSON.stringify(list));
+  },
+};

@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Procedimentos: Leitura pública (para agendamento do paciente) e escrita por terapeuta autenticado
+    match /procedimentos/{procId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Configurações da clínica e Inter: Leitura pública (para exibir dados da clínica e gerar Pix 50%), escrita autenticada
+    match /configuracoes/{configId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Agendamentos: Paciente cria e consulta pelo portal sem login; terapeuta gerencia tudo
+    match /agendamentos/{agendamentoId} {
+      allow read, write: if true;
+    }
+    
+    // Pacientes e Prontuário CRM: Acesso protegido por autenticação
+    match /pacientes/{pacienteId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Evoluções Clínicas: Acesso protegido por autenticação
+    match /evolucoes/{evolucaoId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Transações Financeiras e Fluxo de Caixa: Acesso protegido por autenticação
+    match /financeiro/{transacaoId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Gerenciamento de Acessos de Terapeutas
+    match /usuarios_acesso/{usuarioId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Consultório Massoterapia & Fisio - Gestão & CRM",
+  "description": "Sistema completo de agendamentos com cobrança de sinal de 50% via Banco Inter (Pix/Cartão), prontuário e evolução do paciente com exportação em PDF e envio via WhatsApp, além de controle financeiro e relatórios semanais de faturamento e custos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

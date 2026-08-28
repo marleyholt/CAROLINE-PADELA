@@ -1,0 +1,136 @@
+{
+  "entities": {
+    "Procedimento": {
+      "title": "Procedimento",
+      "description": "Procedimento ou serviço de massoterapia e terapias manuais oferecido pela clínica.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "categoria": { "type": "string" },
+        "duracaoMinutos": { "type": "number" },
+        "precoTotal": { "type": "number" },
+        "sinalPercentual": { "type": "number" },
+        "valorSinal": { "type": "number" },
+        "descricao": { "type": "string" },
+        "corTag": { "type": "string" },
+        "ativo": { "type": "boolean" }
+      },
+      "required": ["id", "nome", "duracaoMinutos", "precoTotal", "valorSinal", "ativo"]
+    },
+    "Configuracao": {
+      "title": "Configuracao",
+      "description": "Configurações da clínica, dados do Banco Inter e chaves de acesso.",
+      "type": "object",
+      "properties": {
+        "nomeClinica": { "type": "string" },
+        "nomeTerapeuta": { "type": "string" },
+        "chavePix": { "type": "string" }
+      }
+    },
+    "Agendamento": {
+      "title": "Agendamento",
+      "description": "Agendamento de sessão de terapia com status de sinal e pagamento.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "pacienteNome": { "type": "string" },
+        "pacienteWhatsapp": { "type": "string" },
+        "procedimentoNome": { "type": "string" },
+        "data": { "type": "string" },
+        "horario": { "type": "string" },
+        "status": { "type": "string" },
+        "valorTotal": { "type": "number" },
+        "valorSinal": { "type": "number" },
+        "valorRestante": { "type": "number" }
+      },
+      "required": ["id", "pacienteNome", "pacienteWhatsapp", "procedimentoNome", "data", "horario", "status"]
+    },
+    "Paciente": {
+      "title": "Paciente",
+      "description": "Registro cadastral de paciente com histórico e dados clínicos.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "email": { "type": "string" },
+        "dataCadastro": { "type": "string" }
+      },
+      "required": ["id", "nome", "whatsapp"]
+    },
+    "EvolucaoClinica": {
+      "title": "EvolucaoClinica",
+      "description": "Prontuário e evolução clínica da sessão de terapia.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "pacienteId": { "type": "string" },
+        "pacienteNome": { "type": "string" },
+        "dataSessao": { "type": "string" },
+        "procedimentoRealizado": { "type": "string" },
+        "terapeutaResponsavel": { "type": "string" }
+      },
+      "required": ["id", "pacienteId", "pacienteNome", "dataSessao", "procedimentoRealizado"]
+    },
+    "TransacaoFinanceira": {
+      "title": "TransacaoFinanceira",
+      "description": "Transação financeira de receita ou despesa no fluxo de caixa.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tipo": { "type": "string" },
+        "categoria": { "type": "string" },
+        "descricao": { "type": "string" },
+        "valor": { "type": "number" },
+        "data": { "type": "string" },
+        "formaPagamento": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "tipo", "descricao", "valor", "data", "status"]
+    },
+    "UsuarioTerapeuta": {
+      "title": "UsuarioTerapeuta",
+      "description": "Cadastro e permissões de acesso dos terapeutas e usuário master.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "nome": { "type": "string" },
+        "role": { "type": "string" },
+        "ativo": { "type": "boolean" }
+      },
+      "required": ["id", "email", "role", "ativo"]
+    }
+  },
+  "firestore": {
+    "/procedimentos/{procId}": {
+      "schema": "Procedimento",
+      "description": "Catálogo de procedimentos disponíveis para agendamento público e gestão"
+    },
+    "/configuracoes/{configId}": {
+      "schema": "Configuracao",
+      "description": "Configurações gerais da clínica e integração Banco Inter"
+    },
+    "/agendamentos/{agendamentoId}": {
+      "schema": "Agendamento",
+      "description": "Agendamentos criados pelos pacientes e gerenciados pelo consultório"
+    },
+    "/pacientes/{pacienteId}": {
+      "schema": "Paciente",
+      "description": "Cadastro e prontuário dos pacientes (acesso restrito a terapeutas autenticados)"
+    },
+    "/evolucoes/{evolucaoId}": {
+      "schema": "EvolucaoClinica",
+      "description": "Evoluções clínicas e anotações de sessões (acesso restrito a terapeutas autenticados)"
+    },
+    "/financeiro/{transacaoId}": {
+      "schema": "TransacaoFinanceira",
+      "description": "Fluxo financeiro e controle de caixa (acesso restrito a terapeutas autenticados)"
+    },
+    "/usuarios_acesso/{usuarioId}": {
+      "schema": "UsuarioTerapeuta",
+      "description": "Controle de permissões e terapeutas autorizados (acesso restrito)"
+    }
+  }
+}
