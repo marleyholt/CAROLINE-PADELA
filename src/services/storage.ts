@@ -6,6 +6,7 @@ import {
   Paciente,
   Procedimento,
   TransacaoFinanceira,
+  PacoteSessoes,
 } from '../types';
 
 const STORAGE_KEYS = {
@@ -16,6 +17,7 @@ const STORAGE_KEYS = {
   EVOLUCOES: 'masso_evolucoes',
   AGENDAMENTOS: 'masso_agendamentos',
   FINANCEIRO: 'masso_financeiro',
+  PACOTES: 'masso_pacotes',
 };
 
 export const DEFAULT_CLINICA: ConfiguracaoClinica = {
@@ -23,11 +25,11 @@ export const DEFAULT_CLINICA: ConfiguracaoClinica = {
   nomeTerapeuta: 'Caroline Padela',
   registroProfissional: 'Massoterapeuta & Terapias Corporais',
   especialidade: 'Massoterapia Clínica, Liberação Miofascial, Drenagem & Estética',
-  whatsapp: '11999999999',
+  whatsapp: '21999999999',
   email: 'contato@carolinepadela.com.br',
-  telefone: '(11) 99999-9999',
+  telefone: '(21) 99999-9999',
   endereco: 'Espaço Terapêutico Caroline Padela',
-  cidadeUf: 'São Paulo - SP',
+  cidadeUf: 'Maricá - RJ',
   cnpjCpf: '',
   logoUrl: '',
   textoMarcaDagua: 'ESPAÇO CAROLINE PADELA • RELATÓRIO CLÍNICO DE EVOLUÇÃO',
@@ -38,7 +40,7 @@ export const DEFAULT_INTER: ConfiguracaoInter = {
   chavePix: 'seu-email-ou-cnpj@inter.com.br',
   tipoChavePix: 'email',
   nomeTitular: 'CONSULTORIO DE MASSOTERAPIA',
-  cidadeTitular: 'SAO PAULO',
+  cidadeTitular: 'MARICA',
   clientId: '',
   clientSecret: '',
   ambiente: 'producao',
@@ -192,5 +194,18 @@ export const StorageService = {
 
   saveFinanceiro: (list: TransacaoFinanceira[]): void => {
     localStorage.setItem(STORAGE_KEYS.FINANCEIRO, JSON.stringify(list));
+  },
+
+  getPacotes: (): PacoteSessoes[] => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.PACOTES);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  savePacotes: (list: PacoteSessoes[]): void => {
+    localStorage.setItem(STORAGE_KEYS.PACOTES, JSON.stringify(list));
   },
 };

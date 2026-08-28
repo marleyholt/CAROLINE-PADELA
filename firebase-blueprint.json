@@ -101,6 +101,23 @@
         "ativo": { "type": "boolean" }
       },
       "required": ["id", "email", "role", "ativo"]
+    },
+    "PacoteSessoes": {
+      "title": "PacoteSessoes",
+      "description": "Controle de venda e realização de pacotes de sessões contratadas pelo paciente.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "pacienteId": { "type": "string" },
+        "pacienteNome": { "type": "string" },
+        "procedimentoNome": { "type": "string" },
+        "totalSessoes": { "type": "number" },
+        "sessoesRealizadas": { "type": "number" },
+        "valorTotal": { "type": "number" },
+        "valorPago": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "pacienteId", "pacienteNome", "procedimentoNome", "totalSessoes", "sessoesRealizadas", "status"]
     }
   },
   "firestore": {
@@ -127,6 +144,10 @@
     "/financeiro/{transacaoId}": {
       "schema": "TransacaoFinanceira",
       "description": "Fluxo financeiro e controle de caixa (acesso restrito a terapeutas autenticados)"
+    },
+    "/pacotes_sessoes/{pacoteId}": {
+      "schema": "PacoteSessoes",
+      "description": "Controle de sessões pagas vs realizadas de pacotes terapêuticos"
     },
     "/usuarios_acesso/{usuarioId}": {
       "schema": "UsuarioTerapeuta",

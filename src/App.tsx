@@ -10,6 +10,7 @@ import {
   UsuarioTerapeuta,
   ConfiguracaoAcessos,
   StatusPagamento,
+  PacoteSessoes,
 } from './types';
 import { StorageService, DEFAULT_CLINICA, DEFAULT_INTER, DEFAULT_PROCEDIMENTOS } from './services/storage';
 import { Sidebar, ActiveTab } from './components/Header';
@@ -62,6 +63,9 @@ import {
   getInterFirestore,
   saveInterFirestore,
   subscribeInterFirestore,
+  subscribePacotesSessoes,
+  savePacoteSessoesFirestore,
+  deletePacoteSessoesFirestore,
 } from './services/firebase';
 import {
   criarEventoGoogleCalendar,
@@ -95,6 +99,7 @@ export default function App() {
   const [pacientes, setPacientes] = useState<Paciente[]>(StorageService.getPacientes());
   const [evolucoes, setEvolucoes] = useState<EvolucaoClinica[]>(StorageService.getEvolucoes());
   const [financeiro, setFinanceiro] = useState<TransacaoFinanceira[]>(StorageService.getFinanceiro());
+  const [pacotesSessoes, setPacotesSessoes] = useState<PacoteSessoes[]>(StorageService.getPacotes());
   const [usuariosAcesso, setUsuariosAcesso] = useState<UsuarioTerapeuta[]>([]);
 
   // Modals & UI States
@@ -211,10 +216,8 @@ export default function App() {
     };
   }, [firebaseUser]);
 
-  // 3. Real-time Authenticated CRM Sync (Pacientes, Evoluções, Financeiro, Usuários)
+  // 3. Real-time Authenticated CRM Sync (Pacientes, Evoluções, Financeiro, Usuários, Pacotes)
   useEffect(() => {
-    if (!firebaseUser) return;
-
     const unsubPacientes = subscribePacientes((items) => {
       setPacientes(items);
       StorageService.savePacientes(items);
@@ -234,13 +237,19 @@ export default function App() {
       setUsuariosAcesso(items);
     });
 
+    const unsubPacotes = subscribePacotesSessoes((items) => {
+      setPacotesSessoes(items);
+      StorageService.savePacotes(items);
+    });
+
     return () => {
       unsubPacientes();
       unsubEvolucoes();
       unsubFinanceiro();
       unsubUsuarios();
+      unsubPacotes();
     };
-  }, [firebaseUser]);
+  }, []);
 
   // Save changes to Firestore
   const handleSaveClinica = async (newClinica: ConfiguracaoClinica) => {
@@ -538,16 +547,25 @@ export default function App() {
 
   // Handlers: Pacientes & Evoluções
   const handleNovoPaciente = async (novo: Paciente) => {
+    const lista = [novo, ...pacientes.filter((p) => p.id !== novo.id)];
+    setPacientes(lista);
+    StorageService.savePacientes(lista);
     await savePacienteFirestore(novo);
     showToast('Paciente Cadastrado!', novo.nome, 'success');
   };
 
   const handleEditarPaciente = async (atualizado: Paciente) => {
+    const lista = pacientes.map((p) => (p.id === atualizado.id ? atualizado : p));
+    setPacientes(lista);
+    StorageService.savePacientes(lista);
     await savePacienteFirestore(atualizado);
     showToast('Paciente Atualizado!', atualizado.nome, 'success');
   };
 
   const handleExcluirPaciente = async (id: string) => {
+    const lista = pacientes.filter((p) => p.id !== id);
+    setPacientes(lista);
+    StorageService.savePacientes(lista);
     await deletePacienteFirestore(id);
     const evos = evolucoes.filter((e) => e.pacienteId === id);
     for (const e of evos) {
@@ -557,6 +575,9 @@ export default function App() {
   };
 
   const handleSalvarEvolucao = async (evo: EvolucaoClinica) => {
+    const listaEvos = [evo, ...evolucoes.filter((e) => e.id !== evo.id)];
+    setEvolucoes(listaEvos);
+    StorageService.saveEvolucoes(listaEvos);
     await saveEvolucaoFirestore(evo);
 
     const pac = pacientes.find((p) => p.id === evo.pacienteId);
@@ -566,25 +587,64 @@ export default function App() {
         totalSessoes: (pac.totalSessoes || 0) + 1,
         ultimaSessao: evo.dataSessao,
       };
+      const listaPac = pacientes.map((p) => (p.id === updatedPac.id ? updatedPac : p));
+      setPacientes(listaPac);
+      StorageService.savePacientes(listaPac);
       await savePacienteFirestore(updatedPac);
     }
 
+    // Se o usuário optou por lançar o valor pago no financeiro automaticamente
+    if (evo.lancarFinanceiro && evo.valorPago && evo.valorPago > 0) {
+      const formaPagto = (evo.formaPagamento === 'pix_inter' || evo.formaPagamento === 'dinheiro' || evo.formaPagamento === 'cartao_credito' || evo.formaPagamento === 'cartao_debito' || evo.formaPagamento === 'transferencia' || evo.formaPagamento === 'boleto')
+        ? (evo.formaPagamento as any)
+        : 'pix_inter';
+
+      const transacaoFinanceira: TransacaoFinanceira = {
+        id: `trans-${Date.now()}`,
+        tipo: 'receita',
+        categoria: 'receita_sessao_avulsa',
+        categoriaNome: `Sessão: ${evo.procedimentoRealizado}`,
+        descricao: `Sessão de ${evo.procedimentoRealizado} - Paciente ${pac?.nome || 'Paciente'}`,
+        valor: evo.valorPago,
+        data: evo.dataSessao,
+        formaPagamento: formaPagto,
+        pacienteId: evo.pacienteId,
+        pacienteNome: pac?.nome,
+        status: 'confirmado',
+        criadoEm: new Date().toISOString(),
+      };
+
+      const listaFinanceiro = [transacaoFinanceira, ...financeiro.filter((f) => f.id !== transacaoFinanceira.id)];
+      setFinanceiro(listaFinanceiro);
+      StorageService.saveTransacoes(listaFinanceiro);
+      await saveTransacaoFirestore(transacaoFinanceira);
+    }
+
     setEvolucaoModalData(null);
-    showToast('Evolução Clínica Registrada!', 'Relatório emitido e prontuário sincronizado.', 'success');
+    showToast('Sessão & Prontuário Salvos!', 'Relatório emitido e prontuário sincronizado.', 'success');
   };
 
   const handleExcluirEvolucao = async (id: string) => {
+    const lista = evolucoes.filter((e) => e.id !== id);
+    setEvolucoes(lista);
+    StorageService.saveEvolucoes(lista);
     await deleteEvolucaoFirestore(id);
     showToast('Evolução Removida', '', 'info');
   };
 
   // Handlers: Procedimentos
   const handleSalvarProcedimento = async (proc: Procedimento) => {
+    const lista = [proc, ...procedimentos.filter((p) => p.id !== proc.id)];
+    setProcedimentos(lista);
+    StorageService.saveProcedimentos(lista);
     await saveProcedimentoFirestore(proc);
     showToast('Procedimento Salvo!', `${proc.nome} - R$ ${proc.precoTotal.toFixed(2)}`, 'success');
   };
 
   const handleExcluirProcedimento = async (id: string) => {
+    const lista = procedimentos.filter((p) => p.id !== id);
+    setProcedimentos(lista);
+    StorageService.saveProcedimentos(lista);
     await deleteProcedimentoFirestore(id);
     showToast('Procedimento Removido', '', 'info');
   };
@@ -592,12 +652,41 @@ export default function App() {
   // Handlers: Financeiro
   const handleNovaTransacao = async (tx: TransacaoFinanceira) => {
     await saveFinanceiroFirestore(tx);
+    const lista = [tx, ...financeiro.filter((t) => t.id !== tx.id)];
+    setFinanceiro(lista);
+    StorageService.saveFinanceiro(lista);
     showToast('Lançamento Registrado!', `R$ ${tx.valor.toFixed(2)} - ${tx.descricao}`, 'success');
   };
 
   const handleExcluirTransacao = async (id: string) => {
     await deleteFinanceiroFirestore(id);
+    const lista = financeiro.filter((t) => t.id !== id);
+    setFinanceiro(lista);
+    StorageService.saveFinanceiro(lista);
     showToast('Transação Removida', '', 'info');
+  };
+
+  // Handlers: Pacotes de Sessões
+  const handleNovoPacote = async (pacote: PacoteSessoes) => {
+    await savePacoteSessoesFirestore(pacote);
+    const lista = [pacote, ...pacotesSessoes.filter((p) => p.id !== pacote.id)];
+    setPacotesSessoes(lista);
+    StorageService.savePacotes(lista);
+  };
+
+  const handleAtualizarPacote = async (pacote: PacoteSessoes) => {
+    await savePacoteSessoesFirestore(pacote);
+    const lista = pacotesSessoes.map((p) => (p.id === pacote.id ? pacote : p));
+    setPacotesSessoes(lista);
+    StorageService.savePacotes(lista);
+  };
+
+  const handleExcluirPacote = async (pacoteId: string) => {
+    await deletePacoteSessoesFirestore(pacoteId);
+    const lista = pacotesSessoes.filter((p) => p.id !== pacoteId);
+    setPacotesSessoes(lista);
+    StorageService.savePacotes(lista);
+    showToast('Pacote Removido', '', 'info');
   };
 
   // Handlers: Usuários de Acesso
@@ -697,10 +786,13 @@ export default function App() {
                 <PacientesCRMView
                   pacientes={pacientes}
                   evolucoes={evolucoes}
+                  procedimentos={procedimentos}
                   configClinica={clinica}
                   onNovoPaciente={handleNovoPaciente}
                   onEditarPaciente={handleEditarPaciente}
                   onExcluirPaciente={handleExcluirPaciente}
+                  onAdicionarSessao={(paciente) => setEvolucaoModalData({ paciente })}
+                  onAbrirNovaEvolucao={(paciente) => setEvolucaoModalData({ paciente })}
                   onNovaEvolucao={(paciente) => setEvolucaoModalData({ paciente })}
                   onEditarEvolucao={(evolucao, paciente) => setEvolucaoModalData({ paciente, evolucao })}
                   onExcluirEvolucao={handleExcluirEvolucao}
@@ -711,10 +803,16 @@ export default function App() {
               {activeTab === 'financeiro' && (
                 <FinanceiroView
                   transacoes={financeiro}
+                  procedimentos={procedimentos}
+                  pacientes={pacientes}
+                  pacotesSessoes={pacotesSessoes}
                   configClinica={clinica}
                   configInter={inter}
                   onNovaTransacao={handleNovaTransacao}
                   onExcluirTransacao={handleExcluirTransacao}
+                  onNovoPacote={handleNovoPacote}
+                  onAtualizarPacote={handleAtualizarPacote}
+                  onExcluirPacote={handleExcluirPacote}
                   onShowToast={showToast}
                 />
               )}
@@ -824,6 +922,7 @@ export default function App() {
           paciente={evolucaoModalData.paciente}
           evolucaoExistente={evolucaoModalData.evolucao}
           procedimentoSugerido={evolucaoModalData.procedimento}
+          procedimentos={procedimentos}
           configClinica={clinica}
           onSalvarEvolucao={handleSalvarEvolucao}
           onShowToast={showToast}

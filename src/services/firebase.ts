@@ -33,6 +33,7 @@ import {
   TransacaoFinanceira,
   UsuarioTerapeuta,
   ConfiguracaoAcessos,
+  PacoteSessoes,
 } from '../types';
 
 export const MASTER_EMAIL = 'leaog.8@gmail.com';
@@ -61,11 +62,13 @@ export function setCachedGoogleAccessToken(token: string | null): void {
   cachedGoogleAccessToken = token;
 }
 
-// Use default or specified firestore database
+// Use default or configured firestore database
 const rawConfig = firebaseConfig as any;
-export const db = (rawConfig.firestoreDatabaseId && rawConfig.firestoreDatabaseId !== '(default)' && rawConfig.firestoreDatabaseId !== 'CRMFISIO')
-  ? getFirestore(app, rawConfig.firestoreDatabaseId)
-  : getFirestore(app);
+const configuredDbId = rawConfig?.firestoreDatabaseId;
+export const db =
+  configuredDbId && configuredDbId !== '(default)'
+    ? getFirestore(app, configuredDbId)
+    : getFirestore(app);
 
 // Firestore Collection Names
 export const COLLECTIONS = {
@@ -76,6 +79,7 @@ export const COLLECTIONS = {
   PROCEDIMENTOS: 'procedimentos',
   CONFIGURACOES: 'configuracoes',
   USUARIOS: 'usuarios_acesso',
+  PACOTES: 'pacotes_sessoes',
 };
 
 // Helper to check if an email has Master privileges
@@ -102,11 +106,11 @@ export async function loginWithEmailPassword(
         try {
           const createRes = await createUserWithEmailAndPassword(auth, cleanEmail, password);
           return { user: createRes.user };
-        } catch (createErr: any) {
-          console.warn('Criação do usuário master no Firebase Auth:', createErr?.message || createErr);
+        } catch {
+          // Continue to local session fallback
         }
       }
-      console.warn('Fallback local para usuário master de testes:', err?.message || err);
+      // Return local master session without crashing
       return { user: auth.currentUser, localFallback: true };
     }
   }
@@ -481,5 +485,41 @@ export async function saveInterFirestore(config: ConfiguracaoInter): Promise<voi
     await setDoc(docRef, config, { merge: true });
   } catch (err: any) {
     console.warn('Salvamento de config do Inter:', err?.message || err);
+  }
+}
+
+// ================= PACOTES DE SESSÕES (PAGAS VS REALIZADAS) =================
+export function subscribePacotesSessoes(callback: (items: PacoteSessoes[]) => void): Unsubscribe {
+  const colRef = collection(db, COLLECTIONS.PACOTES);
+  return onSnapshot(
+    colRef,
+    (snap) => {
+      const list: PacoteSessoes[] = [];
+      snap.forEach((d) => {
+        list.push({ ...(d.data() as PacoteSessoes), id: d.id });
+      });
+      callback(list);
+    },
+    (err) => {
+      console.warn('Snapshot de pacotes de sessões:', err?.message || err);
+    }
+  );
+}
+
+export async function savePacoteSessoesFirestore(pacote: PacoteSessoes): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.PACOTES, pacote.id);
+    await setDoc(docRef, pacote, { merge: true });
+  } catch (err) {
+    console.error('Erro ao salvar pacote de sessões:', err);
+  }
+}
+
+export async function deletePacoteSessoesFirestore(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.PACOTES, id);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error('Erro ao deletar pacote de sessões:', err);
   }
 }

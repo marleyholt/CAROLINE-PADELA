@@ -16,11 +16,15 @@ import {
   Trash2,
   ChevronRight,
   ShieldAlert,
+  DollarSign,
+  CreditCard,
+  CheckCircle,
 } from 'lucide-react';
 import {
   ConfiguracaoClinica,
   EvolucaoClinica,
   Paciente,
+  Procedimento,
 } from '../types';
 import {
   baixarRelatorioPDF,
@@ -31,11 +35,14 @@ import {
 interface PacientesCRMViewProps {
   pacientes: Paciente[];
   evolucoes: EvolucaoClinica[];
+  procedimentos?: Procedimento[];
   configClinica: ConfiguracaoClinica;
   onNovoPaciente: (paciente: Paciente) => void;
   onEditarPaciente: (paciente: Paciente) => void;
   onExcluirPaciente: (pacienteId: string) => void;
-  onAbrirNovaEvolucao: (paciente: Paciente) => void;
+  onAbrirNovaEvolucao?: (paciente: Paciente) => void;
+  onAdicionarSessao?: (paciente: Paciente) => void;
+  onNovaEvolucao?: (paciente: Paciente) => void;
   onEditarEvolucao: (evolucao: EvolucaoClinica, paciente: Paciente) => void;
   onExcluirEvolucao: (evolucaoId: string) => void;
   onShowToast: (title: string, message?: string, type?: 'success' | 'error' | 'info') => void;
@@ -44,11 +51,14 @@ interface PacientesCRMViewProps {
 export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
   pacientes,
   evolucoes,
+  procedimentos = [],
   configClinica,
   onNovoPaciente,
   onEditarPaciente,
   onExcluirPaciente,
   onAbrirNovaEvolucao,
+  onAdicionarSessao,
+  onNovaEvolucao,
   onEditarEvolucao,
   onExcluirEvolucao,
   onShowToast,
@@ -72,6 +82,17 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
   const [formAlergias, setFormAlergias] = useState('');
   const [formAtividade, setFormAtividade] = useState<'sedentario' | 'leve' | 'moderado' | 'intenso'>('leve');
 
+  // Trigger add session safely across different prop names
+  const handleTriggerAdicionarSessao = (pac: Paciente) => {
+    if (onAdicionarSessao) {
+      onAdicionarSessao(pac);
+    } else if (onAbrirNovaEvolucao) {
+      onAbrirNovaEvolucao(pac);
+    } else if (onNovaEvolucao) {
+      onNovaEvolucao(pac);
+    }
+  };
+
   const filteredPacientes = pacientes.filter(
     (p) =>
       p.nome.toLowerCase().includes(busca.toLowerCase()) ||
@@ -79,7 +100,9 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
       p.profissao.toLowerCase().includes(busca.toLowerCase())
   );
 
-  const selectedPaciente = pacientes.find((p) => p.id === selectedPacienteId) || filteredPacientes[0] || pacientes[0];
+  const selectedPaciente =
+    pacientes.find((p) => p.id === selectedPacienteId) || filteredPacientes[0] || pacientes[0];
+
   const pacienteEvolucoes = selectedPaciente
     ? evolucoes
         .filter((e) => e.pacienteId === selectedPaciente.id)
@@ -173,34 +196,38 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
   const handleExportarPDF = (evo: EvolucaoClinica) => {
     if (!selectedPaciente) return;
     baixarRelatorioPDF(evo, selectedPaciente, configClinica);
-    onShowToast('PDF Gerado!', 'Relatório clínico com logo e marca d\'água salvo com sucesso.', 'success');
+    onShowToast(
+      'Relatório de Anamnese (PDF) Gerado!',
+      `Documento oficial emitido timbrado (${configClinica.cidadeUf || 'Maricá - RJ'}) com marca d'água de proteção.`,
+      'success'
+    );
   };
 
   const handleEnviarWhatsApp = (evo: EvolucaoClinica) => {
     if (!selectedPaciente) return;
     const msg = gerarTextoWhatsAppEvolucao(evo, selectedPaciente, configClinica);
     abrirWhatsAppComTexto(selectedPaciente.whatsapp, msg);
-    onShowToast('WhatsApp Aberto', 'Mensagem da evolução formatada.', 'info');
+    onShowToast('WhatsApp Aberto', 'Mensagem da sessão formatada com sucesso.', 'info');
   };
 
   return (
     <div id="view-pacientes-crm" className="space-y-3.5">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
         <div>
           <h2 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
             <Users className="w-4 h-4 text-emerald-600" />
             CRM Clínico & Prontuário de Pacientes
           </h2>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            Anamnese, histórico de sessões, evolução de dor (EVA), relatórios em PDF com marca d'água e WhatsApp.
+            Registro de sessões, valor pago, anamnese clínica, dor (EVA) e emissão de Relatórios em PDF sem dados financeiros.
           </p>
         </div>
 
         <button
           id="btn-cadastrar-paciente"
           onClick={() => abrirModalCadastro()}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-semibold shadow-2xs transition-all shrink-0"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-semibold shadow-2xs transition-all shrink-0 cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Cadastrar Paciente</span>
@@ -241,20 +268,36 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                 >
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-bold text-slate-900 truncate">{pac.nome}</h4>
-                    <span className="text-[9px] font-semibold text-emerald-800 bg-emerald-100/80 px-1.5 py-0.5 rounded">
-                      {evolucoesCount} {evolucoesCount === 1 ? 'sessão' : 'sessões'}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] font-semibold text-emerald-800 bg-emerald-100/80 px-1.5 py-0.5 rounded">
+                        {evolucoesCount} {evolucoesCount === 1 ? 'sessão' : 'sessões'}
+                      </span>
+                    </div>
                   </div>
 
                   <p className="text-[11px] text-slate-500 mt-0.5 truncate">
                     {pac.profissao || 'Paciente'} • <span className="font-mono">{pac.whatsapp}</span>
                   </p>
 
-                  {pac.queixaInicial && (
-                    <p className="text-[10px] text-slate-400 italic line-clamp-1 mt-0.5">
-                      "{pac.queixaInicial}"
-                    </p>
-                  )}
+                  <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-slate-100/60">
+                    <span className="text-[10px] text-slate-400">
+                      Última: {pac.ultimaSessao ? new Date(pac.ultimaSessao + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'Sem registros'}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedPacienteId(pac.id);
+                        handleTriggerAdicionarSessao(pac);
+                      }}
+                      className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded text-[10px] font-semibold flex items-center gap-1 transition-colors"
+                      title="Adicionar sessão para este paciente"
+                    >
+                      <Plus className="w-2.5 h-2.5" />
+                      <span>+ Sessão</span>
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -269,7 +312,7 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pb-3 border-b border-slate-100">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-sm shrink-0 border border-emerald-200">
                       {selectedPaciente.nome.charAt(0)}
                     </div>
                     <div>
@@ -277,16 +320,17 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                         {selectedPaciente.nome}
                       </h3>
                       <p className="text-[11px] text-slate-500">
-                        {selectedPaciente.profissao || 'Profissão não informada'} • Cadastrado em {new Date(selectedPaciente.dataCadastro + 'T12:00:00Z').toLocaleDateString('pt-BR')}
+                        {selectedPaciente.profissao || 'Profissão não informada'} • Cadastrado em{' '}
+                        {new Date(selectedPaciente.dataCadastro + 'T12:00:00Z').toLocaleDateString('pt-BR')}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => abrirModalCadastro(selectedPaciente)}
-                    className="p-1.5 px-2.5 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 rounded-md border border-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors"
+                    className="p-1.5 px-2.5 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 rounded-md border border-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                     title="Editar dados cadastrais"
                   >
                     <Edit2 className="w-3 h-3" />
@@ -294,12 +338,12 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                   </button>
 
                   <button
-                    id="btn-nova-evolucao-prontuario"
-                    onClick={() => onAbrirNovaEvolucao(selectedPaciente)}
-                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-semibold shadow-2xs flex items-center gap-1 transition-colors"
+                    id="btn-adicionar-sessao-paciente"
+                    onClick={() => handleTriggerAdicionarSessao(selectedPaciente)}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Nova Evolução</span>
+                    <span>Adicionar Sessão</span>
                   </button>
                 </div>
               </div>
@@ -344,33 +388,34 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
               <div className="flex items-center justify-between">
                 <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                  Atendimentos & Evoluções ({pacienteEvolucoes.length})
+                  Histórico de Sessões & Anamneses ({pacienteEvolucoes.length})
                 </h3>
                 <span className="text-[11px] text-slate-500">
-                  PDF com marca d'água & WhatsApp
+                  PDF com marca d'água ({configClinica.cidadeUf || 'Maricá - RJ'}) & WhatsApp
                 </span>
               </div>
 
               {pacienteEvolucoes.length === 0 ? (
-                <div className="bg-white rounded-lg p-6 text-center border border-slate-200 space-y-2">
+                <div className="bg-white rounded-lg p-6 text-center border border-slate-200 space-y-2.5">
                   <p className="text-xs text-slate-500">
-                    Ainda não há evoluções registradas para este paciente.
+                    Ainda não há sessões registradas para este paciente.
                   </p>
                   <button
-                    onClick={() => onAbrirNovaEvolucao(selectedPaciente)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-semibold"
+                    onClick={() => handleTriggerAdicionarSessao(selectedPaciente)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-bold cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Registrar 1ª Evolução</span>
+                    <span>Adicionar 1ª Sessão</span>
                   </button>
                 </div>
               ) : (
                 <div className="space-y-2.5">
                   {pacienteEvolucoes.map((evo) => {
                     const dataFormatada = new Date(evo.dataSessao + 'T12:00:00Z').toLocaleDateString('pt-BR');
-                    const melhora = evo.evaInicial > 0
-                      ? Math.round(((evo.evaInicial - evo.evaFinal) / evo.evaInicial) * 100)
-                      : 0;
+                    const melhora =
+                      evo.evaInicial > 0
+                        ? Math.round(((evo.evaInicial - evo.evaFinal) / evo.evaInicial) * 100)
+                        : 0;
 
                     return (
                       <div
@@ -380,11 +425,18 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                         {/* Header of session card */}
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2 border-b border-slate-100">
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                {dataFormatada}
+                                📅 {dataFormatada}
                               </span>
-                              <h4 className="text-xs sm:text-sm font-bold text-slate-900">{evo.procedimentoRealizado}</h4>
+                              <h4 className="text-xs sm:text-sm font-bold text-slate-900">
+                                {evo.procedimentoRealizado}
+                              </h4>
+                              {evo.valorPago !== undefined && evo.valorPago > 0 && (
+                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                  R$ {evo.valorPago.toFixed(2)}
+                                </span>
+                              )}
                             </div>
                             <p className="text-[10px] text-slate-400 mt-0.5">
                               Terapeuta: {evo.terapeutaResponsavel}
@@ -404,7 +456,7 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                         </div>
 
                         {/* Treated areas chips */}
-                        {evo.regioesTrabalhadas.length > 0 && (
+                        {evo.regioesTrabalhadas && evo.regioesTrabalhadas.length > 0 && (
                           <div className="flex flex-wrap gap-1">
                             {evo.regioesTrabalhadas.map((r) => (
                               <span
@@ -421,13 +473,13 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                         <div className="space-y-1.5 text-xs text-slate-700">
                           {evo.queixaPrincipal && (
                             <div>
-                              <strong className="text-slate-800">Queixa: </strong>
+                              <strong className="text-slate-800">Queixa / Anamnese: </strong>
                               <span>{evo.queixaPrincipal}</span>
                             </div>
                           )}
                           {evo.manobrasAplicadas && (
                             <div>
-                              <strong className="text-slate-800">Manobras & Técnicas: </strong>
+                              <strong className="text-slate-800">Manobras & Condutas: </strong>
                               <span>{evo.manobrasAplicadas}</span>
                             </div>
                           )}
@@ -439,7 +491,9 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                           )}
                           {evo.orientacoesCasa && (
                             <div className="bg-emerald-50/50 p-2 rounded-md border border-emerald-100 text-xs">
-                              <strong className="text-emerald-900 block text-[11px] mb-0.5">Orientações para Casa:</strong>
+                              <strong className="text-emerald-900 block text-[11px] mb-0.5">
+                                Orientações de Autocuidado Domiciliar:
+                              </strong>
                               <p className="text-emerald-800 whitespace-pre-line">{evo.orientacoesCasa}</p>
                             </div>
                           )}
@@ -447,21 +501,21 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
 
                         {/* Actions bar: Export PDF, WhatsApp, Edit */}
                         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <button
                               id={`btn-pdf-evo-${evo.id}`}
                               onClick={() => handleExportarPDF(evo)}
-                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs"
-                              title="Baixar Relatório Oficial com Timbre e Marca d'Água"
+                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                              title="Baixar Relatório de Anamnese & Evolução com Timbre (Maricá - RJ) e Marca d'Água (Sem dados financeiros)"
                             >
                               <Download className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Baixar PDF (Marca d'Água)</span>
+                              <span>Relatório Anamnese (PDF)</span>
                             </button>
 
                             <button
                               id={`btn-whats-evo-${evo.id}`}
                               onClick={() => handleEnviarWhatsApp(evo)}
-                              className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs"
+                              className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                               title="Enviar resumo clínico no WhatsApp do paciente"
                             >
                               <Send className="w-3.5 h-3.5" />
@@ -472,15 +526,15 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => onEditarEvolucao(evo, selectedPaciente)}
-                              className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-slate-100 rounded-lg transition-colors"
-                              title="Editar evolução"
+                              className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                              title="Editar sessão"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => onExcluirEvolucao(evo.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                              title="Excluir evolução"
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Excluir sessão"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -498,22 +552,23 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
 
       {/* Modal Cadastro/Edição de Paciente */}
       {modalNovoPaciente && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full overflow-hidden my-6">
-            <div className="bg-gradient-to-r from-emerald-800 to-teal-800 text-white p-5 flex items-center justify-between">
-              <h3 className="font-bold text-base">
-                {editandoPaciente ? 'Editar Ficha do Paciente' : 'Cadastrar Novo Paciente'}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden my-6">
+            <div className="bg-slate-900 text-white p-3.5 flex items-center justify-between">
+              <h3 className="font-bold text-xs uppercase tracking-wider flex items-center gap-2">
+                <Users className="w-4 h-4 text-emerald-400" />
+                {editandoPaciente ? 'Editar Ficha do Paciente' : 'Novo Paciente & Ficha de Anamnese'}
               </h3>
               <button
                 onClick={() => setModalNovoPaciente(false)}
-                className="text-white/80 hover:text-white p-1 rounded-lg"
+                className="text-slate-400 hover:text-white p-1 rounded"
               >
-                ✕
+                <XIcon className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSalvarPaciente} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <form onSubmit={handleSalvarPaciente} className="p-4 space-y-3 text-xs max-h-[75vh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div className="sm:col-span-2">
                   <label className="font-semibold text-slate-700 block mb-1">Nome Completo *</label>
                   <input
@@ -521,18 +576,20 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                     required
                     value={formNome}
                     onChange={(e) => setFormNome(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    placeholder="Ex: Maria Silva"
+                    className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">WhatsApp com DDD *</label>
+                  <label className="font-semibold text-slate-700 block mb-1">WhatsApp (com DDD) *</label>
                   <input
                     type="tel"
                     required
                     value={formWhatsapp}
                     onChange={(e) => setFormWhatsapp(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    placeholder="Ex: 21999999999"
+                    className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
 
@@ -542,7 +599,8 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                     type="email"
                     value={formEmail}
                     onChange={(e) => setFormEmail(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    placeholder="cliente@email.com"
+                    className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
 
@@ -552,18 +610,18 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                     type="date"
                     value={formDataNasc}
                     onChange={(e) => setFormDataNasc(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Profissão</label>
+                  <label className="font-semibold text-slate-700 block mb-1">Profissão / Ocupação</label>
                   <input
                     type="text"
-                    placeholder="Ex: Arquiteta, Advogado..."
                     value={formProfissao}
                     onChange={(e) => setFormProfissao(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    placeholder="Ex: Arquiteta, Advogado..."
+                    className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
 
@@ -571,87 +629,88 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                   <label className="font-semibold text-slate-700 block mb-1">CPF</label>
                   <input
                     type="text"
-                    placeholder="000.000.000-00"
                     value={formCpf}
                     onChange={(e) => setFormCpf(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    placeholder="000.000.000-00"
+                    className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Nível de Atividade Física</label>
-                  <select
-                    value={formAtividade}
-                    onChange={(e) => setFormAtividade(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:outline-none"
-                  >
-                    <option value="sedentario">Sedentário</option>
-                    <option value="leve">Leve (1-2x semana)</option>
-                    <option value="moderado">Moderado (3-4x semana)</option>
-                    <option value="intenso">Intenso / Atleta</option>
-                  </select>
+                  <label className="font-semibold text-slate-700 block mb-1">Endereço / Bairro</label>
+                  <input
+                    type="text"
+                    value={formEndereco}
+                    onChange={(e) => setFormEndereco(e.target.value)}
+                    placeholder="Maricá - RJ"
+                    className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 focus:ring-1 focus:ring-emerald-500"
+                  />
                 </div>
               </div>
 
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Endereço</label>
-                <input
-                  type="text"
-                  placeholder="Rua, número, bairro e cidade"
-                  value={formEndereco}
-                  onChange={(e) => setFormEndereco(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
-              </div>
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <span className="font-bold text-[11px] text-slate-700 uppercase tracking-wider block">
+                  Anamnese Inicial & Saúde
+                </span>
 
-              <div className="space-y-3 pt-2 border-t border-slate-100">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Queixa Principal Inicial</label>
+                  <label className="font-semibold text-slate-700 block mb-1">Queixa Principal / Motivo da Procura</label>
                   <textarea
                     rows={2}
-                    placeholder="O que motivou a procura pela massoterapia/fisioterapia..."
                     value={formQueixa}
                     onChange={(e) => setFormQueixa(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    placeholder="Ex: Dor crônica na cervical e trapézio, tensão por estresse no trabalho..."
+                    className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Histórico Médico / Cirurgias</label>
+                  <label className="font-semibold text-slate-700 block mb-1">Histórico Médico / Cirurgias / Fraturas</label>
                   <input
                     type="text"
-                    placeholder="Cirurgias prévias, fraturas, hérnias de disco, etc."
                     value={formHistorico}
                     onChange={(e) => setFormHistorico(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    placeholder="Ex: Hérnia de disco L4-L5, cirurgia no joelho em 2021..."
+                    className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Contraindicações / Alergias a óleos/cremes</label>
+                  <label className="font-semibold text-slate-700 block mb-1">Medicações de Uso Contínuo</label>
                   <input
                     type="text"
-                    placeholder="Sensibilidade a fragrâncias, óleo mineral, arnica..."
+                    value={formMedicacoes}
+                    onChange={(e) => setFormMedicacoes(e.target.value)}
+                    placeholder="Ex: Anti-hipertensivo, ansiolítico..."
+                    className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-amber-900 block mb-1">Contraindicações / Alergias a Óleos / Cosméticos</label>
+                  <input
+                    type="text"
                     value={formAlergias}
                     onChange={(e) => setFormAlergias(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    placeholder="Ex: Alergia a óleo mineral, fragrâncias fortes, trombose pregressa..."
+                    className="w-full px-2.5 py-1.5 rounded-md border border-amber-200 bg-amber-50/50 focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setModalNovoPaciente(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold text-xs"
+                  className="px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-md font-semibold"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-xs shadow-xs"
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-semibold shadow-2xs"
                 >
-                  Salvar Paciente
+                  {editandoPaciente ? 'Salvar Alterações' : 'Cadastrar Paciente'}
                 </button>
               </div>
             </form>
@@ -661,3 +720,11 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
     </div>
   );
 };
+
+function XIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}

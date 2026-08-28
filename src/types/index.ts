@@ -81,6 +81,11 @@ export interface EvolucaoClinica {
   observacoesGerais: string;
   proximaSessaoRecomendada?: string;
   
+  // Detalhes Financeiros da Sessão (Opcional - não incluídos no PDF de anamnese/clínico)
+  valorPago?: number;
+  formaPagamento?: 'pix_inter' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'transferencia' | 'pacote' | string;
+  lancarFinanceiro?: boolean;
+  
   criadoEm: string;
 }
 
@@ -106,12 +111,52 @@ export interface Paciente {
   ultimaSessao?: string;
 }
 
-export type TipoTransacao = 'receita_sinal' | 'receita_restante' | 'receita_avulsa' | 'despesa_insumos' | 'despesa_fixa' | 'despesa_taxas' | 'despesa_outros';
+export type TipoTransacao = 
+  | 'receita_sinal' 
+  | 'receita_restante' 
+  | 'receita_procedimento'
+  | 'receita_pacote'
+  | 'receita_avulsa' 
+  | 'despesa_insumos' 
+  | 'despesa_fixa' 
+  | 'despesa_taxas' 
+  | 'despesa_marketing'
+  | 'despesa_equipamentos'
+  | 'despesa_outros'
+  | string;
+
+export interface ItemSessaoRealizada {
+  id: string;
+  data: string; // YYYY-MM-DD
+  horario?: string;
+  observacoes?: string;
+  terapeuta?: string;
+}
+
+export interface PacoteSessoes {
+  id: string;
+  pacienteId: string;
+  pacienteNome: string;
+  pacienteWhatsapp?: string;
+  procedimentoId?: string;
+  procedimentoNome: string;
+  totalSessoes: number; // ex: 8
+  sessoesRealizadas: number; // ex: 3
+  valorTotal: number;
+  valorPago: number;
+  statusPagamento: 'pago_integral' | 'parcial' | 'pendente';
+  status: 'ativo' | 'concluido' | 'cancelado';
+  historicoRealizacoes: ItemSessaoRealizada[];
+  dataContratacao: string; // YYYY-MM-DD
+  observacoes?: string;
+  criadoEm: string;
+}
 
 export interface TransacaoFinanceira {
   id: string;
   tipo: 'receita' | 'despesa';
   categoria: TipoTransacao;
+  categoriaNome?: string;
   descricao: string;
   valor: number;
   data: string; // YYYY-MM-DD
@@ -119,6 +164,8 @@ export interface TransacaoFinanceira {
   agendamentoId?: string;
   pacienteId?: string;
   pacienteNome?: string;
+  procedimentoId?: string;
+  pacoteId?: string;
   status: 'confirmado' | 'pendente';
   comprovanteRef?: string;
   criadoEm: string;
