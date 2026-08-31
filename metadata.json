@@ -1,6 +1,6 @@
 {
-  "name": "Consultório Massoterapia & Fisio - Gestão & CRM",
-  "description": "Sistema completo de agendamentos com cobrança de sinal de 50% via Banco Inter (Pix/Cartão), prontuário e evolução do paciente com exportação em PDF e envio via WhatsApp, além de controle financeiro e relatórios semanais de faturamento e custos.",
+  "name": "Caroline Padela - Liberação Miofascial & Massoterapia",
+  "description": "Página oficial, agendamentos online com sinal Pix/Cartão via Banco Inter, prontuário com relatório de anamnese oficial em PDF, CRM de atendimentos e gestão em Maricá - RJ.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

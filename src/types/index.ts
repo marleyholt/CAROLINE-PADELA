@@ -23,7 +23,7 @@ export type StatusAgendamento =
 
 export type StatusPagamento = 'a_pagar' | 'pago_sinal' | 'pago_integral';
 
-export type MetodoPagamentoSinal = 'pix_inter' | 'cartao_credito' | 'dinheiro_presencial';
+export type MetodoPagamentoSinal = 'pix_infinitepay' | 'pix_inter' | 'cartao_credito' | 'dinheiro_presencial';
 
 export interface Agendamento {
   id: string;
@@ -63,8 +63,12 @@ export interface EvolucaoClinica {
   pacienteId: string;
   agendamentoId?: string;
   dataSessao: string; // YYYY-MM-DD
+  horario?: string; // HH:mm
   procedimentoRealizado: string;
   terapeutaResponsavel: string;
+  
+  // Status da sessão / relatório clínico
+  statusRelatorio?: 'pendente' | 'concluido'; // 'pendente' = agendada que ainda vai acontecer / aguarda relatório; 'concluido' = relatório preenchido e finalizado
   
   // Escala Visual Analógica de Dor (0-10)
   evaInicial: number;
@@ -83,7 +87,7 @@ export interface EvolucaoClinica {
   
   // Detalhes Financeiros da Sessão (Opcional - não incluídos no PDF de anamnese/clínico)
   valorPago?: number;
-  formaPagamento?: 'pix_inter' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'transferencia' | 'pacote' | string;
+  formaPagamento?: 'pix_infinitepay' | 'pix_inter' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'transferencia' | 'pacote' | string;
   lancarFinanceiro?: boolean;
   
   criadoEm: string;
@@ -160,7 +164,7 @@ export interface TransacaoFinanceira {
   descricao: string;
   valor: number;
   data: string; // YYYY-MM-DD
-  formaPagamento: 'pix_inter' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'transferencia' | 'boleto';
+  formaPagamento: 'pix_infinitepay' | 'pix_inter' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'transferencia' | 'boleto';
   agendamentoId?: string;
   pacienteId?: string;
   pacienteNome?: string;
@@ -187,16 +191,23 @@ export interface ConfiguracaoClinica {
   mensagemWhatsappPadrao: string;
 }
 
-export interface ConfiguracaoInter {
+export interface ConfiguracaoInfinitePay {
   chavePix: string;
   tipoChavePix: 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria';
   nomeTitular: string;
   cidadeTitular: string;
-  clientId: string;
-  clientSecret: string;
-  ambiente: 'sandbox' | 'producao';
+  infiniteTag: string; // Ex: $carolpadela ou link InfinitePay
+  linkPagamento: string; // Link direto de cobrança
+  apiKey: string;
+  ambiente: 'producao' | 'sandbox';
   webhookAtivo: boolean;
+  // Campos de compatibilidade
+  clientId?: string;
+  clientSecret?: string;
 }
+
+// Compatibilidade de tipo
+export type ConfiguracaoInter = ConfiguracaoInfinitePay;
 
 export interface PermissoesModulos {
   agendamentos: boolean;

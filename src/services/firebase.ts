@@ -27,6 +27,7 @@ import {
   Agendamento,
   ConfiguracaoClinica,
   ConfiguracaoInter,
+  ConfiguracaoInfinitePay,
   EvolucaoClinica,
   Paciente,
   Procedimento,
@@ -451,42 +452,56 @@ export async function saveClinicaFirestore(config: ConfiguracaoClinica): Promise
   }
 }
 
-export async function getInterFirestore(): Promise<ConfiguracaoInter | null> {
+export async function getInfinitePayFirestore(): Promise<ConfiguracaoInfinitePay | null> {
   try {
-    const docRef = doc(db, COLLECTIONS.CONFIGURACOES, 'inter');
+    const docRef = doc(db, COLLECTIONS.CONFIGURACOES, 'infinitepay');
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      return snap.data() as ConfiguracaoInter;
+      return snap.data() as ConfiguracaoInfinitePay;
+    }
+    // Fallback legado 'inter'
+    const docRefOld = doc(db, COLLECTIONS.CONFIGURACOES, 'inter');
+    const snapOld = await getDoc(docRefOld);
+    if (snapOld.exists()) {
+      return snapOld.data() as ConfiguracaoInfinitePay;
     }
   } catch (e: any) {
-    console.warn('Leitura de config do Inter no Firestore (usando fallback local):', e?.message || e);
+    console.warn('Leitura de config da InfinitePay no Firestore (usando fallback local):', e?.message || e);
   }
   return null;
 }
 
-export function subscribeInterFirestore(callback: (config: ConfiguracaoInter) => void): Unsubscribe {
-  const docRef = doc(db, COLLECTIONS.CONFIGURACOES, 'inter');
+export function subscribeInfinitePayFirestore(callback: (config: ConfiguracaoInfinitePay) => void): Unsubscribe {
+  const docRef = doc(db, COLLECTIONS.CONFIGURACOES, 'infinitepay');
   return onSnapshot(
     docRef,
     (snap) => {
       if (snap.exists()) {
-        callback(snap.data() as ConfiguracaoInter);
+        callback(snap.data() as ConfiguracaoInfinitePay);
       }
     },
     (err) => {
-      console.warn('Snapshot de config do Inter:', err?.message || err);
+      console.warn('Snapshot de config da InfinitePay:', err?.message || err);
     }
   );
 }
 
-export async function saveInterFirestore(config: ConfiguracaoInter): Promise<void> {
+export async function saveInfinitePayFirestore(config: ConfiguracaoInfinitePay): Promise<void> {
   try {
-    const docRef = doc(db, COLLECTIONS.CONFIGURACOES, 'inter');
+    const docRef = doc(db, COLLECTIONS.CONFIGURACOES, 'infinitepay');
     await setDoc(docRef, config, { merge: true });
+    // Salva também no legado para compatibilidade
+    const docRefOld = doc(db, COLLECTIONS.CONFIGURACOES, 'inter');
+    await setDoc(docRefOld, config, { merge: true });
   } catch (err: any) {
-    console.warn('Salvamento de config do Inter:', err?.message || err);
+    console.warn('Salvamento de config da InfinitePay:', err?.message || err);
   }
 }
+
+// Aliases para compatibilidade
+export const getInterFirestore = getInfinitePayFirestore;
+export const subscribeInterFirestore = subscribeInfinitePayFirestore;
+export const saveInterFirestore = saveInfinitePayFirestore;
 
 // ================= PACOTES DE SESSÕES (PAGAS VS REALIZADAS) =================
 export function subscribePacotesSessoes(callback: (items: PacoteSessoes[]) => void): Unsubscribe {

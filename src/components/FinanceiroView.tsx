@@ -745,12 +745,13 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
 
                           <td className="py-3 px-4 whitespace-nowrap">
                             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                              {t.formaPagamento === 'pix_inter' && '🔑 Pix Inter'}
-                              {t.formaPagamento === 'cartao_credito' && '💳 Cartão Crédito'}
+                              {(t.formaPagamento === 'pix_infinitepay' || t.formaPagamento === 'pix_inter') && '⚡ Pix InfinitePay'}
+                              {t.formaPagamento === 'cartao_credito' && '💳 Cartão Crédito (InfinitePay)'}
                               {t.formaPagamento === 'cartao_debito' && '💳 Cartão Débito'}
                               {t.formaPagamento === 'dinheiro' && '💵 Dinheiro'}
                               {t.formaPagamento === 'transferencia' && '🏦 Transferência'}
                               {t.formaPagamento === 'boleto' && '📄 Boleto'}
+                              {t.formaPagamento === 'pacote' && '📦 Pacote'}
                             </span>
                           </td>
 
@@ -1144,10 +1145,10 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                   onChange={(e) => setFormFormaPagto(e.target.value as any)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-slate-50 focus:outline-none cursor-pointer"
                 >
+                  <option value="pix_infinitepay">⚡ Pix Instantâneo InfinitePay</option>
+                  <option value="cartao_credito">💳 Cartão de Crédito (InfinitePay / Link)</option>
                   <option value="dinheiro">💵 Dinheiro Presencial</option>
-                  <option value="cartao_credito">💳 Cartão de Crédito (Maquininha)</option>
-                  <option value="cartao_debito">💳 Cartão de Débito (Maquininha)</option>
-                  <option value="pix_inter">🔑 Pix Banco Inter</option>
+                  <option value="cartao_debito">💳 Cartão de Débito</option>
                   <option value="transferencia">🏦 Transferência Bancária</option>
                   <option value="boleto">📄 Boleto</option>
                 </select>

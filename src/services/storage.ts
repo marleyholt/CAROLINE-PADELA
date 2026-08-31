@@ -1,6 +1,7 @@
 import {
   Agendamento,
   ConfiguracaoClinica,
+  ConfiguracaoInfinitePay,
   ConfiguracaoInter,
   EvolucaoClinica,
   Paciente,
@@ -11,6 +12,7 @@ import {
 
 const STORAGE_KEYS = {
   CLINICA: 'masso_clinica_config',
+  INFINITEPAY: 'masso_infinitepay_config',
   INTER: 'masso_inter_config',
   PROCEDIMENTOS: 'masso_procedimentos',
   PACIENTES: 'masso_pacientes',
@@ -21,31 +23,34 @@ const STORAGE_KEYS = {
 };
 
 export const DEFAULT_CLINICA: ConfiguracaoClinica = {
-  nomeClinica: 'Espaço Caroline Padela',
+  nomeClinica: 'Caroline Padela - Liberação Miofascial & Massoterapia',
   nomeTerapeuta: 'Caroline Padela',
-  registroProfissional: 'Massoterapeuta & Terapias Corporais',
-  especialidade: 'Massoterapia Clínica, Liberação Miofascial, Drenagem & Estética',
-  whatsapp: '21999999999',
+  registroProfissional: 'Massoterapeuta & Terapeuta Corporal',
+  especialidade: 'Liberação Miofascial • Massagem • Ventosaterapia • Drenagem Linfática',
+  whatsapp: '5521975134597',
   email: 'contato@carolinepadela.com.br',
-  telefone: '(21) 99999-9999',
-  endereco: 'Espaço Terapêutico Caroline Padela',
+  telefone: '(21) 97513-4597',
+  endereco: 'R. Barão de Inoa, 58 - Sobreloja - Centro',
   cidadeUf: 'Maricá - RJ',
   cnpjCpf: '',
   logoUrl: '',
-  textoMarcaDagua: 'ESPAÇO CAROLINE PADELA • RELATÓRIO CLÍNICO DE EVOLUÇÃO',
+  textoMarcaDagua: 'CAROLINE PADELA • LIBERAÇÃO MIOFASCIAL & MASSOTERAPIA',
   mensagemWhatsappPadrao: 'Olá {nome}! Aqui é a Caroline Padela. Segue o seu relatório de evolução da nossa sessão com as orientações de autocuidado. Qualquer dúvida estou à disposição!',
 };
 
-export const DEFAULT_INTER: ConfiguracaoInter = {
-  chavePix: 'seu-email-ou-cnpj@inter.com.br',
-  tipoChavePix: 'email',
-  nomeTitular: 'CONSULTORIO DE MASSOTERAPIA',
+export const DEFAULT_INFINITEPAY: ConfiguracaoInfinitePay = {
+  chavePix: '5521975134597',
+  tipoChavePix: 'telefone',
+  nomeTitular: 'CAROLINE PADELA',
   cidadeTitular: 'MARICA',
-  clientId: '',
-  clientSecret: '',
+  infiniteTag: '$carolpadela',
+  linkPagamento: 'https://infinitepay.io/$carolpadela',
+  apiKey: '',
   ambiente: 'producao',
   webhookAtivo: true,
 };
+
+export const DEFAULT_INTER = DEFAULT_INFINITEPAY;
 
 export const DEFAULT_PROCEDIMENTOS: Procedimento[] = [
   {
@@ -118,17 +123,27 @@ export const StorageService = {
     localStorage.setItem(STORAGE_KEYS.CLINICA, JSON.stringify(config));
   },
 
-  getInter: (): ConfiguracaoInter => {
+  getInfinitePay: (): ConfiguracaoInfinitePay => {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.INTER);
-      return data ? JSON.parse(data) : DEFAULT_INTER;
+      const data = localStorage.getItem(STORAGE_KEYS.INFINITEPAY) || localStorage.getItem(STORAGE_KEYS.INTER);
+      return data ? JSON.parse(data) : DEFAULT_INFINITEPAY;
     } catch {
-      return DEFAULT_INTER;
+      return DEFAULT_INFINITEPAY;
     }
   },
 
-  saveInter: (config: ConfiguracaoInter): void => {
+  saveInfinitePay: (config: ConfiguracaoInfinitePay): void => {
+    localStorage.setItem(STORAGE_KEYS.INFINITEPAY, JSON.stringify(config));
+    // Salva também na chave legada para sincronização
     localStorage.setItem(STORAGE_KEYS.INTER, JSON.stringify(config));
+  },
+
+  getInter: (): ConfiguracaoInfinitePay => {
+    return StorageService.getInfinitePay();
+  },
+
+  saveInter: (config: ConfiguracaoInfinitePay): void => {
+    StorageService.saveInfinitePay(config);
   },
 
   getProcedimentos: (): Procedimento[] => {

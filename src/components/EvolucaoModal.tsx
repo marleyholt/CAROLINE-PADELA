@@ -11,6 +11,7 @@ import {
   Calendar,
   CreditCard,
   CheckCircle2,
+  Clock,
 } from 'lucide-react';
 import {
   ConfiguracaoClinica,
@@ -37,7 +38,7 @@ interface EvolucaoModalProps {
   onShowToast: (title: string, message?: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-const REGIOES_ANATOMICAS = [
+const DEFAULT_REGIOES = [
   'Cervical',
   'Trapézio Superior',
   'Escápulas / Romboides',
@@ -115,7 +116,7 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
     evolucaoExistente?.valorPago ?? (defaultProcObj ? defaultProcObj.precoTotal : 160)
   );
   const [formaPagamento, setFormaPagamento] = useState<string>(
-    evolucaoExistente?.formaPagamento || 'pix_inter'
+    evolucaoExistente?.formaPagamento || 'pix_infinitepay'
   );
   const [lancarFinanceiro, setLancarFinanceiro] = useState<boolean>(
     evolucaoExistente?.lancarFinanceiro ?? true
@@ -125,10 +126,44 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
   const [evaInicial, setEvaInicial] = useState<number>(evolucaoExistente?.evaInicial ?? 7);
   const [evaFinal, setEvaFinal] = useState<number>(evolucaoExistente?.evaFinal ?? 2);
 
-  // Regiões Anatômicas
+  // Regiões Anatômicas (com persistência local de novas regiões customizadas)
+  const [listaRegioes, setListaRegioes] = useState<string[]>(() => {
+    try {
+      const salvas = localStorage.getItem('masso_regioes_anatomicas');
+      if (salvas) {
+        const parsed = JSON.parse(salvas);
+        return Array.from(new Set([...DEFAULT_REGIOES, ...parsed]));
+      }
+    } catch {}
+    return DEFAULT_REGIOES;
+  });
+
   const [regioesTrabalhadas, setRegioesTrabalhadas] = useState<string[]>(
     evolucaoExistente?.regioesTrabalhadas || ['Cervical', 'Trapézio Superior']
   );
+  const [novaRegiaoInput, setNovaRegiaoInput] = useState('');
+  const [mostrarInputOutros, setMostrarInputOutros] = useState(false);
+
+  const handleAdicionarOutraRegiao = () => {
+    const limpo = novaRegiaoInput.trim();
+    if (!limpo) return;
+
+    if (!listaRegioes.includes(limpo)) {
+      const novaLista = [...listaRegioes, limpo];
+      setListaRegioes(novaLista);
+      try {
+        localStorage.setItem('masso_regioes_anatomicas', JSON.stringify(novaLista));
+      } catch {}
+    }
+
+    if (!regioesTrabalhadas.includes(limpo)) {
+      setRegioesTrabalhadas((prev) => [...prev, limpo]);
+    }
+
+    setNovaRegiaoInput('');
+    setMostrarInputOutros(false);
+    onShowToast('Região Adicionada', `"${limpo}" foi salva nas opções rápidas.`, 'success');
+  };
 
   // Relatório de Anamnese & Evolução Clínica
   const [queixaPrincipal, setQueixaPrincipal] = useState(
@@ -174,7 +209,10 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
     return {
       id: evolucaoExistente?.id || `evo-${Date.now()}`,
       pacienteId: paciente.id,
+      agendamentoId: evolucaoExistente?.agendamentoId,
       dataSessao,
+      horario: evolucaoExistente?.horario,
+      statusRelatorio: 'concluido', // Salvar conclui o relatório da sessão
       procedimentoRealizado,
       terapeutaResponsavel,
       evaInicial,
@@ -251,6 +289,23 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
 
         {/* Scrollable Form Body */}
         <div className="p-3.5 sm:p-5 space-y-4 overflow-y-auto flex-1">
+          {/* Lembrete de Sessão Agendada Pendente de Relatório */}
+          {evolucaoExistente?.statusRelatorio === 'pendente' && (
+            <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-xs text-amber-950 flex items-start gap-2.5 shadow-2xs">
+              <div className="p-1 bg-amber-100 text-amber-700 rounded-md shrink-0 mt-0.5">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div className="space-y-0.5">
+                <span className="font-bold text-amber-900 flex items-center gap-1.5">
+                  Concluindo Relatório da Sessão Agendada
+                </span>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  Esta sessão foi registrada pelo agendamento. Preencha as manobras realizadas, avaliação EVA de dor e condutas aplicadas para finalizar o relatório clínico oficial.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Fast Template Bar */}
           <div className="space-y-1.5 bg-emerald-50/50 p-2.5 sm:p-3 rounded-lg border border-emerald-200/60">
             <div className="flex items-center justify-between">
@@ -358,11 +413,11 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
                 <select
                   value={formaPagamento}
                   onChange={(e) => setFormaPagamento(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
                 >
-                  <option value="pix_inter">⚡ Pix Banco Inter</option>
+                  <option value="pix_infinitepay">⚡ Pix Instantâneo InfinitePay</option>
+                  <option value="cartao_credito">💳 Cartão de Crédito (InfinitePay / Link)</option>
                   <option value="dinheiro">💵 Dinheiro Presencial (Espécie)</option>
-                  <option value="cartao_credito">💳 Cartão de Crédito</option>
                   <option value="cartao_debito">💳 Cartão de Débito</option>
                   <option value="pacote">📦 Pacote de Sessões (Já Pago)</option>
                   <option value="transferencia">🏦 Transferência Bancária</option>
@@ -447,19 +502,63 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
 
           {/* Seção 3: Regiões Anatômicas */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-              <HeartPulse className="w-3.5 h-3.5 text-emerald-600" />
-              3. Regiões Anatômicas Trabalhadas
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <HeartPulse className="w-3.5 h-3.5 text-emerald-600" />
+                3. Regiões Anatômicas Trabalhadas
+              </label>
+              <button
+                type="button"
+                onClick={() => setMostrarInputOutros(!mostrarInputOutros)}
+                className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
+              >
+                + Outros (Adicionar nova região)
+              </button>
+            </div>
+
+            {/* Input para adicionar nova região em Outros */}
+            {mostrarInputOutros && (
+              <div className="flex items-center gap-2 p-2 bg-emerald-50 rounded-lg border border-emerald-200">
+                <input
+                  type="text"
+                  value={novaRegiaoInput}
+                  onChange={(e) => setNovaRegiaoInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAdicionarOutraRegiao();
+                    }
+                  }}
+                  placeholder="Nome da nova região anatômica (ex: Manguito Rotador, Tendão de Aquiles...)"
+                  className="flex-1 px-2.5 py-1.5 rounded-md border border-emerald-300 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={handleAdicionarOutraRegiao}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Salvar Região
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMostrarInputOutros(false)}
+                  className="px-2 py-1.5 text-slate-500 hover:text-slate-700 text-xs transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-1.5">
-              {REGIOES_ANATOMICAS.map((reg) => {
+              {listaRegioes.map((reg) => {
                 const isSelected = regioesTrabalhadas.includes(reg);
                 return (
                   <button
                     key={reg}
                     type="button"
                     onClick={() => toggleRegiao(reg)}
-                    className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-all ${
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-emerald-700 text-white border-emerald-700 shadow-2xs'
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-emerald-300'

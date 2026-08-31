@@ -19,6 +19,8 @@ import {
   DollarSign,
   CreditCard,
   CheckCircle,
+  Clock,
+  AlertCircle,
 } from 'lucide-react';
 import {
   ConfiguracaoClinica,
@@ -28,6 +30,7 @@ import {
 } from '../types';
 import {
   baixarRelatorioPDF,
+  baixarRelatorioDesenvolvimentoPDF,
   gerarTextoWhatsAppEvolucao,
   abrirWhatsAppComTexto,
 } from '../services/pdfGenerator';
@@ -254,7 +257,9 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
           <div className="space-y-1.5 max-h-[600px] overflow-y-auto pr-0.5">
             {filteredPacientes.map((pac) => {
               const isSelected = selectedPaciente?.id === pac.id;
-              const evolucoesCount = evolucoes.filter((e) => e.pacienteId === pac.id).length;
+              const pacienteEvos = evolucoes.filter((e) => e.pacienteId === pac.id);
+              const evolucoesCount = pacienteEvos.length;
+              const pendentesCount = pacienteEvos.filter((e) => e.statusRelatorio === 'pendente').length;
 
               return (
                 <div
@@ -266,9 +271,15 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                       : 'border-slate-100 hover:border-slate-300 bg-slate-50/40'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-1">
                     <h4 className="text-xs font-bold text-slate-900 truncate">{pac.nome}</h4>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
+                      {pendentesCount > 0 && (
+                        <span className="text-[9px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                          <Clock className="w-2.5 h-2.5 text-amber-700" />
+                          {pendentesCount} {pendentesCount === 1 ? 'agendada' : 'agendadas'}
+                        </span>
+                      )}
                       <span className="text-[9px] font-semibold text-emerald-800 bg-emerald-100/80 px-1.5 py-0.5 rounded">
                         {evolucoesCount} {evolucoesCount === 1 ? 'sessão' : 'sessões'}
                       </span>
@@ -328,6 +339,21 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                  {pacienteEvolucoes.length > 0 && (
+                    <button
+                      id="btn-relatorio-desenvolvimento-paciente"
+                      onClick={() => {
+                        baixarRelatorioDesenvolvimentoPDF(selectedPaciente, pacienteEvolucoes, configClinica);
+                        onShowToast('Relatório Gerado', 'Relatório Geral de Desenvolvimento baixado em PDF com sucesso!', 'success');
+                      }}
+                      className="p-1.5 px-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-md border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                      title="Gerar Relatório Geral de Desenvolvimento com marca d'água oficial"
+                    >
+                      <Download className="w-3 h-3 text-emerald-400" />
+                      <span>Relatório de Desenvolvimento (PDF)</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => abrirModalCadastro(selectedPaciente)}
                     className="p-1.5 px-2.5 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 rounded-md border border-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
@@ -381,6 +407,23 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                   </p>
                 </div>
               </div>
+
+              {/* Lembrete de Sessão Agendada Pendente de Relatório */}
+              {pacienteEvolucoes.some((e) => e.statusRelatorio === 'pendente') && (
+                <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-xs text-amber-950 flex items-start gap-2.5 shadow-2xs">
+                  <div className="p-1 bg-amber-100 text-amber-700 rounded-md shrink-0 mt-0.5">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-amber-900 flex items-center gap-1.5">
+                      Lembrete: Sessão Agendada no Prontuário
+                    </span>
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      Este paciente possui sessão agendada que ainda vai acontecer. O histórico já está preparado para você registrar a evolução clínica e emitir o relatório em PDF assim que concluir o atendimento.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Evolution History & Reports Timeline */}
@@ -412,10 +455,88 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                 <div className="space-y-2.5">
                   {pacienteEvolucoes.map((evo) => {
                     const dataFormatada = new Date(evo.dataSessao + 'T12:00:00Z').toLocaleDateString('pt-BR');
+                    const isPendente = evo.statusRelatorio === 'pendente';
                     const melhora =
                       evo.evaInicial > 0
                         ? Math.round(((evo.evaInicial - evo.evaFinal) / evo.evaInicial) * 100)
                         : 0;
+
+                    if (isPendente) {
+                      return (
+                        <div
+                          key={evo.id}
+                          className="bg-amber-50/40 rounded-lg border-2 border-amber-300 p-3 sm:p-3.5 shadow-2xs space-y-2.5 transition-colors"
+                        >
+                          {/* Header of pending session card */}
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2 border-b border-amber-200/80">
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[10px] font-bold text-amber-950 bg-amber-100 px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-amber-700 animate-pulse" />
+                                  Sessão Agendada (Ainda vai acontecer)
+                                </span>
+                                <span className="text-[10px] font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                  📅 {dataFormatada} {evo.horario ? `às ${evo.horario}h` : ''}
+                                </span>
+                                <h4 className="text-xs sm:text-sm font-bold text-slate-900">
+                                  {evo.procedimentoRealizado}
+                                </h4>
+                                {evo.valorPago !== undefined && evo.valorPago > 0 && (
+                                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300">
+                                    R$ {evo.valorPago.toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-0.5">
+                                Terapeuta Responsável: {evo.terapeutaResponsavel}
+                              </p>
+                            </div>
+
+                            <span className="text-[10px] font-bold uppercase bg-amber-200/80 text-amber-950 px-2.5 py-1 rounded-md self-start sm:self-auto border border-amber-300">
+                              Aguardando Relatório
+                            </span>
+                          </div>
+
+                          {/* Lembrete Terapeuta */}
+                          <div className="bg-amber-100/60 border border-amber-300/70 p-2.5 rounded-md text-xs text-amber-950 space-y-1">
+                            <strong className="block text-amber-900 text-[11px]">
+                              🔔 Lembrete da Terapeuta:
+                            </strong>
+                            <p className="text-amber-800 text-[11px] leading-relaxed">
+                              Esta sessão foi registrada no agendamento do paciente. Após a realização do atendimento, clique no botão abaixo para preencher a avaliação de dor (EVA), manobras realizadas, resposta tecidual e orientações para gerar o relatório clínico em PDF e mensagem de WhatsApp.
+                            </p>
+                            {evo.queixaPrincipal && (
+                              <div className="pt-1 text-slate-700 text-[11px]">
+                                <strong>Observações / Queixa: </strong>
+                                <span>{evo.queixaPrincipal}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Action button: Preencher & Concluir Relatório */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-200/80 text-xs">
+                            <button
+                              id={`btn-concluir-relatorio-${evo.id}`}
+                              onClick={() => onEditarEvolucao(evo, selectedPaciente)}
+                              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                              title="Preencher relatório clínico, escala de dor e gerar PDF"
+                            >
+                              <FileText className="w-4 h-4" />
+                              <span>📝 Preencher & Concluir Relatório Clínico</span>
+                            </button>
+
+                            <button
+                              onClick={() => onExcluirEvolucao(evo.id)}
+                              className="p-1.5 px-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer text-xs flex items-center gap-1"
+                              title="Excluir ou cancelar esta sessão"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Excluir</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
 
                     return (
                       <div
@@ -427,7 +548,7 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                📅 {dataFormatada}
+                                📅 {dataFormatada} {evo.horario ? `às ${evo.horario}h` : ''}
                               </span>
                               <h4 className="text-xs sm:text-sm font-bold text-slate-900">
                                 {evo.procedimentoRealizado}

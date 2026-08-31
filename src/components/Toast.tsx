@@ -15,6 +15,21 @@ interface ToastProps {
 }
 
 export const ToastContainer: React.FC<ToastProps> = ({ toasts, onDismiss }) => {
+  // Auto-dismiss após 3 segundos para cada toast
+  React.useEffect(() => {
+    if (toasts.length === 0) return;
+
+    const timers = toasts.map((toast) =>
+      setTimeout(() => {
+        onDismiss(toast.id);
+      }, 3000)
+    );
+
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+    };
+  }, [toasts, onDismiss]);
+
   return (
     <div
       id="toast-container"

@@ -181,9 +181,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Logo e Nome da Clínica */}
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 flex items-center justify-center text-sm font-bold shadow-inner shrink-0">
-                🌿
-              </div>
+              {clinica.logoUrl ? (
+                <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 overflow-hidden flex items-center justify-center shrink-0 p-0.5">
+                  <img
+                    src={clinica.logoUrl}
+                    alt={clinica.nomeClinica}
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="w-8 h-8 rounded-lg bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 flex items-center justify-center text-sm font-bold shadow-inner shrink-0">
+                  🌿
+                </div>
+              )}
               <div className="min-w-0">
                 <h1 className="text-xs sm:text-sm font-bold text-white tracking-tight truncate max-w-[160px] sm:max-w-xs">
                   {clinica.nomeClinica || 'Espaço Terapêutico'}

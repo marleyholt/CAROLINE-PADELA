@@ -21,6 +21,7 @@ import { ProcedimentosView } from './components/ProcedimentosView';
 import { ConfiguracoesView } from './components/ConfiguracoesView';
 import { AcessosView } from './components/AcessosView';
 import { PortalPacienteView } from './components/PortalPacienteView';
+import { LandingPageView } from './components/LandingPageView';
 import { LoginTerapeutaModal } from './components/LoginTerapeutaModal';
 import { NovoAgendamentoModal } from './components/NovoAgendamentoModal';
 import { PixCobrancaModal } from './components/PixCobrancaModal';
@@ -76,8 +77,8 @@ import {
 import { User } from 'firebase/auth';
 
 export default function App() {
-  // Mode: Patient Portal or Therapist CRM
-  const [viewMode, setViewMode] = useState<'portal_paciente' | 'crm_terapeuta'>('portal_paciente');
+  // Mode: Home Landing Page, Patient Portal or Therapist CRM
+  const [viewMode, setViewMode] = useState<'home' | 'portal_paciente' | 'crm_terapeuta'>('home');
   const [activeTab, setActiveTab] = useState<ActiveTab>('agendamentos');
 
   // Firebase Auth State
@@ -112,12 +113,17 @@ export default function App() {
     procedimento?: string;
   } | null>(null);
 
-  // Toast Notifications
+  // Toast Notifications (Desaparece automaticamente após 3 segundos)
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const showToast = (title: string, message: string = '', type: 'success' | 'error' | 'info' = 'info') => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     setToasts((prev) => [...prev, { id, title, message, type }]);
+
+    // Auto dismiss após 3 segundos
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 3000);
   };
 
   const dismissToast = (id: string) => {
@@ -357,14 +363,51 @@ export default function App() {
       }
     }
 
-    // 1. Save in Firestore
-    await saveAgendamentoFirestore(agendamentoFinal);
+    // Helper para comparar telefones sem caracteres especiais
+    const cleanPhone = (val?: string) => (val || '').replace(/\D/g, '');
+    const searchPhone = cleanPhone(novo.pacienteWhatsapp);
 
-    // 2. If patient is new, register in CRM
-    const existingPac = pacientes.find((p) => p.id === novo.pacienteId || p.whatsapp === novo.pacienteWhatsapp);
-    if (!existingPac) {
+    // 1. Verificar se o paciente já está cadastrado no CRM
+    const existingPac = pacientes.find((p) =>
+      (novo.pacienteId && novo.pacienteId !== 'novo' && p.id === novo.pacienteId) ||
+      (searchPhone && cleanPhone(p.whatsapp) === searchPhone) ||
+      (novo.pacienteNome && p.nome.trim().toLowerCase() === novo.pacienteNome.trim().toLowerCase())
+    );
+
+    let targetPacienteId = novo.pacienteId;
+    let targetPacienteNome = novo.pacienteNome;
+
+    if (existingPac) {
+      // Paciente já existe: NÃO duplicar no CRM! Vincular com os dados existentes
+      targetPacienteId = existingPac.id;
+      targetPacienteNome = existingPac.nome;
+      agendamentoFinal.pacienteId = existingPac.id;
+      agendamentoFinal.pacienteNome = existingPac.nome;
+      agendamentoFinal.pacienteWhatsapp = existingPac.whatsapp;
+      if (!agendamentoFinal.pacienteEmail && existingPac.email) {
+        agendamentoFinal.pacienteEmail = existingPac.email;
+      }
+
+      // Atualiza total de sessões e data no cadastro do paciente existente
+      const updatedPac: Paciente = {
+        ...existingPac,
+        totalSessoes: (existingPac.totalSessoes || 0) + 1,
+        ultimaSessao: agendamentoFinal.data,
+      };
+      const listaPac = pacientes.map((p) => (p.id === updatedPac.id ? updatedPac : p));
+      setPacientes(listaPac);
+      StorageService.savePacientes(listaPac);
+      if (firebaseUser) {
+        await savePacienteFirestore(updatedPac);
+      }
+    } else {
+      // Paciente novo: Cadastrar no CRM
+      const novoPacId = novo.pacienteId && novo.pacienteId !== 'novo' ? novo.pacienteId : `pac-${Date.now()}`;
+      targetPacienteId = novoPacId;
+      agendamentoFinal.pacienteId = novoPacId;
+
       const novoPac: Paciente = {
-        id: novo.pacienteId || `pac-${Date.now()}`,
+        id: novoPacId,
         nome: novo.pacienteNome,
         whatsapp: novo.pacienteWhatsapp,
         email: novo.pacienteEmail || '',
@@ -377,10 +420,52 @@ export default function App() {
         nivelAtividadeFisica: 'moderado',
         dataCadastro: new Date().toISOString().split('T')[0],
         totalSessoes: 1,
+        ultimaSessao: agendamentoFinal.data,
       };
+
+      const listaPac = [novoPac, ...pacientes.filter((p) => p.id !== novoPac.id)];
+      setPacientes(listaPac);
+      StorageService.savePacientes(listaPac);
       if (firebaseUser) {
         await savePacienteFirestore(novoPac);
       }
+    }
+
+    // 2. Salvar o agendamento no Firestore / Storage
+    await saveAgendamentoFirestore(agendamentoFinal);
+
+    // 3. Inserir uma nova sessão (Evolução / Prontuário) com marcação de "Pendente de Relatório / Ainda vai acontecer"
+    const novaSessaoPendente: EvolucaoClinica = {
+      id: `evo-ag-${agendamentoFinal.id}`,
+      pacienteId: targetPacienteId,
+      agendamentoId: agendamentoFinal.id,
+      dataSessao: agendamentoFinal.data,
+      horario: agendamentoFinal.horario,
+      procedimentoRealizado: agendamentoFinal.procedimentoNome,
+      terapeutaResponsavel: clinica.nomeTerapeuta || 'Caroline Padela',
+      statusRelatorio: 'pendente', // Marcador visual de sessão agendada que aguarda conclusão do relatório
+      evaInicial: 0,
+      evaFinal: 0,
+      regioesTrabalhadas: [],
+      queixaPrincipal: agendamentoFinal.observacoes || 'Sessão agendada no sistema.',
+      manobrasAplicadas: '',
+      reacaoTecidual: '',
+      orientacoesCasa: '',
+      observacoesGerais: `Sessão agendada para ${agendamentoFinal.data} às ${agendamentoFinal.horario}. Lembrete: Concluir a evolução e relatório clínico após o atendimento.`,
+      valorPago: agendamentoFinal.valorTotal,
+      formaPagamento: (agendamentoFinal.metodoSinal as any) || 'pix_infinitepay',
+      lancarFinanceiro: false,
+      criadoEm: new Date().toISOString(),
+    };
+
+    const listaEvos = [
+      novaSessaoPendente,
+      ...evolucoes.filter((e) => e.id !== novaSessaoPendente.id && e.agendamentoId !== agendamentoFinal.id),
+    ];
+    setEvolucoes(listaEvos);
+    StorageService.saveEvolucoes(listaEvos);
+    if (firebaseUser) {
+      await saveEvolucaoFirestore(novaSessaoPendente);
     }
 
     setModalNovoAgendamento(false);
@@ -388,7 +473,15 @@ export default function App() {
     if (abrirPix) {
       setAgendamentoPixModal(agendamentoFinal);
     } else {
-      showToast('Agendamento Criado!', `${agendamentoFinal.pacienteNome} - ${agendamentoFinal.procedimentoNome}`, 'success');
+      if (existingPac) {
+        showToast(
+          'Agendamento Registrado!',
+          `Paciente existente (${targetPacienteNome}): Nova sessão agendada e adicionada ao prontuário.`,
+          'success'
+        );
+      } else {
+        showToast('Agendamento Criado!', `${targetPacienteNome} - ${agendamentoFinal.procedimentoNome}`, 'success');
+      }
     }
   };
 
@@ -506,7 +599,16 @@ export default function App() {
   };
 
   const handleIniciarEvolucaoAgendamento = (ag: Agendamento) => {
-    let pac = pacientes.find((p) => p.id === ag.pacienteId || p.whatsapp === ag.pacienteWhatsapp);
+    const cleanPhone = (val?: string) => (val || '').replace(/\D/g, '');
+    const agPhoneClean = cleanPhone(ag.pacienteWhatsapp);
+
+    let pac = pacientes.find(
+      (p) =>
+        p.id === ag.pacienteId ||
+        (agPhoneClean && cleanPhone(p.whatsapp) === agPhoneClean) ||
+        (ag.pacienteNome && p.nome.trim().toLowerCase() === ag.pacienteNome.trim().toLowerCase())
+    );
+
     if (!pac) {
       pac = {
         id: ag.pacienteId || `pac-${Date.now()}`,
@@ -526,9 +628,17 @@ export default function App() {
       savePacienteFirestore(pac);
     }
 
+    // Localizar sessão/evolução pendente associada a este agendamento
+    const existingEvo = evolucoes.find(
+      (e) =>
+        (ag.id && (e.agendamentoId === ag.id || e.id === `evo-ag-${ag.id}`)) ||
+        (e.pacienteId === pac?.id && e.dataSessao === ag.data)
+    );
+
     setEvolucaoModalData({
       paciente: pac,
       procedimento: ag.procedimentoNome,
+      evolucao: existingEvo,
     });
   };
 
@@ -542,6 +652,16 @@ export default function App() {
     }
 
     await deleteAgendamentoFirestore(id);
+
+    // Se houver evolução pendente criada para este agendamento, remove também
+    const evoPendente = evolucoes.find((e) => e.agendamentoId === id || e.id === `evo-ag-${id}`);
+    if (evoPendente && evoPendente.statusRelatorio === 'pendente') {
+      const listaEvos = evolucoes.filter((e) => e.id !== evoPendente.id);
+      setEvolucoes(listaEvos);
+      StorageService.saveEvolucoes(listaEvos);
+      await deleteEvolucaoFirestore(evoPendente.id);
+    }
+
     showToast('Agendamento Removido', '', 'info');
   };
 
@@ -575,17 +695,22 @@ export default function App() {
   };
 
   const handleSalvarEvolucao = async (evo: EvolucaoClinica) => {
-    const listaEvos = [evo, ...evolucoes.filter((e) => e.id !== evo.id)];
+    // Ao salvar, a evolução é marcada como relatório concluído
+    const evoConcluida: EvolucaoClinica = {
+      ...evo,
+      statusRelatorio: 'concluido',
+    };
+
+    const listaEvos = [evoConcluida, ...evolucoes.filter((e) => e.id !== evoConcluida.id)];
     setEvolucoes(listaEvos);
     StorageService.saveEvolucoes(listaEvos);
-    await saveEvolucaoFirestore(evo);
+    await saveEvolucaoFirestore(evoConcluida);
 
-    const pac = pacientes.find((p) => p.id === evo.pacienteId);
+    const pac = pacientes.find((p) => p.id === evoConcluida.pacienteId);
     if (pac) {
       const updatedPac: Paciente = {
         ...pac,
-        totalSessoes: (pac.totalSessoes || 0) + 1,
-        ultimaSessao: evo.dataSessao,
+        ultimaSessao: evoConcluida.dataSessao,
       };
       const listaPac = pacientes.map((p) => (p.id === updatedPac.id ? updatedPac : p));
       setPacientes(listaPac);
@@ -616,8 +741,8 @@ export default function App() {
 
       const listaFinanceiro = [transacaoFinanceira, ...financeiro.filter((f) => f.id !== transacaoFinanceira.id)];
       setFinanceiro(listaFinanceiro);
-      StorageService.saveTransacoes(listaFinanceiro);
-      await saveTransacaoFirestore(transacaoFinanceira);
+      StorageService.saveFinanceiro(listaFinanceiro);
+      await saveFinanceiroFirestore(transacaoFinanceira);
     }
 
     setEvolucaoModalData(null);
@@ -717,12 +842,29 @@ export default function App() {
 
   return (
     <>
-      {/* 1. VISÃO PÚBLICA: PORTAL DO PACIENTE / AUTO-AGENDAMENTO */}
+      {/* 1. VISÃO INSTITUCIONAL: PÁGINA INICIAL / LANDING PAGE CAROLINE PADELA */}
+      {viewMode === 'home' && (
+        <LandingPageView
+          configClinica={clinica}
+          procedimentos={procedimentos}
+          onIrParaAgendamento={() => setViewMode('portal_paciente')}
+          onIrParaCRM={() => {
+            if (currentTerapeuta) {
+              setViewMode('crm_terapeuta');
+            } else {
+              setModalLoginOpen(true);
+            }
+          }}
+        />
+      )}
+
+      {/* 2. VISÃO PÚBLICA: PORTAL DO PACIENTE / AUTO-AGENDAMENTO */}
       {viewMode === 'portal_paciente' && (
         <PortalPacienteView
           procedimentos={procedimentos}
           configClinica={clinica}
           configInter={inter}
+          onVoltarHome={() => setViewMode('home')}
           onOpenCRM={() => {
             if (currentTerapeuta) {
               setViewMode('crm_terapeuta');
@@ -745,7 +887,7 @@ export default function App() {
         />
       )}
 
-      {/* 2. VISÃO PRIVADA: CRM CLÍNICO & GESTÃO DA TERAPEUTA */}
+      {/* 3. VISÃO PRIVADA: CRM CLÍNICO & GESTÃO DA TERAPEUTA */}
       {viewMode === 'crm_terapeuta' && (
         <div className="flex flex-col h-screen w-full bg-slate-100 overflow-hidden font-sans text-slate-900 antialiased">
           {/* Main Topbar & Fullscreen Navigation */}
@@ -757,7 +899,7 @@ export default function App() {
             pendentesSinalCount={agendamentos.filter((a) => a.status === 'aguardando_sinal' || a.statusPagamento === 'a_pagar').length}
             currentTerapeuta={currentTerapeuta}
             onOpenNovoAgendamento={() => setModalNovoAgendamento(true)}
-            onOpenPublicPortal={() => setViewMode('portal_paciente')}
+            onOpenPublicPortal={() => setViewMode('home')}
             onLogout={handleLogout}
           />
 

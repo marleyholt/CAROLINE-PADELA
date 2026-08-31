@@ -34,6 +34,7 @@ interface PortalPacienteViewProps {
   onAgendamentoCriado: (novoAgendamento: Agendamento, registrarSinalAgora: boolean) => Promise<void>;
   onOpenLoginTerapeuta?: () => void;
   onOpenCRM?: () => void;
+  onVoltarHome?: () => void;
   onShowToast: (title: string, message?: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -48,6 +49,7 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
   onAgendamentoCriado,
   onOpenLoginTerapeuta,
   onOpenCRM,
+  onVoltarHome,
   onShowToast,
 }) => {
   const handleOpenLogin = () => {
@@ -173,9 +175,19 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
       {/* Top Header Mobile & Desktop */}
       <header className="bg-slate-900 text-white border-b border-slate-800 px-3.5 sm:px-6 py-2.5 flex items-center justify-between sticky top-0 z-40 shadow-xs">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold text-sm shadow-inner shrink-0">
-            🌿
-          </div>
+          {configClinica.logoUrl ? (
+            <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 overflow-hidden flex items-center justify-center shrink-0 p-0.5">
+              <img
+                src={configClinica.logoUrl}
+                alt={configClinica.nomeClinica}
+                className="max-h-full max-w-full object-contain"
+              />
+            </div>
+          ) : (
+            <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold text-sm shadow-inner shrink-0">
+              🌿
+            </div>
+          )}
           <div className="min-w-0">
             <h1 className="text-xs sm:text-sm font-bold text-white leading-tight truncate">
               {configClinica.nomeClinica || 'Espaço Terapêutico'}
@@ -186,17 +198,33 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
           </div>
         </div>
 
-        {/* Botão de Acesso CRM */}
-        <button
-          id="btn-acesso-crm-topo"
-          onClick={handleOpenLogin}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-all border border-slate-700 active:scale-95 touch-manipulation min-h-[38px] shrink-0 cursor-pointer"
-          title="Acessar o painel de gestão do consultório"
-        >
-          <Lock className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="hidden sm:inline">Acesso CRM</span>
-          <span className="sm:hidden">Entrar</span>
-        </button>
+        {/* Botões de Ação Topo */}
+        <div className="flex items-center gap-2">
+          {onVoltarHome && (
+            <button
+              id="btn-voltar-home-portal"
+              onClick={onVoltarHome}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg shadow-xs transition-all border border-slate-700 active:scale-95 touch-manipulation min-h-[38px] shrink-0 cursor-pointer"
+              title="Voltar para a página inicial da clínica"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Página Inicial</span>
+              <span className="sm:hidden">Início</span>
+            </button>
+          )}
+
+          {/* Botão de Acesso CRM */}
+          <button
+            id="btn-acesso-crm-topo"
+            onClick={handleOpenLogin}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-all border border-slate-700 active:scale-95 touch-manipulation min-h-[38px] shrink-0 cursor-pointer"
+            title="Acessar o painel de gestão do consultório"
+          >
+            <Lock className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">Acesso CRM</span>
+            <span className="sm:hidden">Entrar</span>
+          </button>
+        </div>
       </header>
 
       {/* Main Container Centralizado e Otimizado */}
