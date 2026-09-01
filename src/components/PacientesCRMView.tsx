@@ -629,19 +629,37 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Treated areas chips */}
-                        {evo.regioesTrabalhadas && evo.regioesTrabalhadas.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {evo.regioesTrabalhadas.map((r) => (
+                        {/* Treated areas and Body Weight / Fluid Loss chips */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {evo.pesoKg && (
+                            <span className="text-[10px] font-bold bg-sky-50 text-sky-900 border border-sky-200 px-2 py-0.5 rounded flex items-center gap-1">
+                              ⚖️ Peso Sessão: <strong>{evo.pesoKg} {evo.pesoKg.toString().toLowerCase().includes('kg') ? '' : 'kg'}</strong>
+                            </span>
+                          )}
+
+                          {evo.pesoFinalSessaoKg && (
+                            <span className="text-[10px] font-bold bg-emerald-50 text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded flex items-center gap-1">
+                              💧 Pós-Drenagem: <strong>{evo.pesoFinalSessaoKg} {evo.pesoFinalSessaoKg.toString().toLowerCase().includes('kg') ? '' : 'kg'}</strong>
+                            </span>
+                          )}
+
+                          {evo.circunferenciaCm && (
+                            <span className="text-[10px] font-medium bg-slate-100 text-slate-800 border border-slate-200 px-2 py-0.5 rounded">
+                              📏 {evo.circunferenciaCm}
+                            </span>
+                          )}
+
+                          {evo.regioesTrabalhadas && evo.regioesTrabalhadas.length > 0 && (
+                            evo.regioesTrabalhadas.map((r) => (
                               <span
                                 key={r}
                                 className="text-[10px] font-medium bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded"
                               >
                                 {r}
                               </span>
-                            ))}
-                          </div>
-                        )}
+                            ))
+                          )}
+                        </div>
 
                         {/* Content text */}
                         <div className="space-y-1.5 text-xs text-slate-700">

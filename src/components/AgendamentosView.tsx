@@ -36,11 +36,12 @@ interface AgendamentosViewProps {
   onSalvarClinica?: (config: ConfiguracaoClinica) => void;
   onOpenNovoAgendamento: () => void;
   onOpenPixModal: (agendamento: Agendamento) => void;
-  onConfirmarSinal: (agendamentoId: string, metodo: 'pix_inter') => void;
+  onConfirmarSinal: (agendamentoId: string, metodo: 'pix_infinitepay' | 'pix_inter' | 'cartao_credito' | 'dinheiro') => void;
+  onConfirmarPagamentoIntegral?: (agendamentoId: string, metodo: 'pix_infinitepay' | 'pix_inter' | 'cartao_credito' | 'dinheiro') => void;
   onReceberRestanteEConcluir: (agendamento: Agendamento) => void;
   onAtualizarStatusPagamento: (agendamentoId: string, novoStatus: StatusPagamento) => void;
   onSincronizarGoogleCalendar: (agendamento: Agendamento) => void;
-  onIniciarEvolucao: (agendamento: Agendamento) => void;
+  onIniciarEvolucao?: (agendamento: Agendamento) => void;
   onExcluirAgendamento: (agendamentoId: string) => void;
   onShowToast: (title: string, message?: string, type?: 'success' | 'error' | 'info') => void;
 }
@@ -54,6 +55,7 @@ export const AgendamentosView: React.FC<AgendamentosViewProps> = ({
   onOpenNovoAgendamento,
   onOpenPixModal,
   onConfirmarSinal,
+  onConfirmarPagamentoIntegral,
   onReceberRestanteEConcluir,
   onAtualizarStatusPagamento,
   onSincronizarGoogleCalendar,
@@ -93,6 +95,11 @@ export const AgendamentosView: React.FC<AgendamentosViewProps> = ({
     '13:30', '14:45', '16:00', '17:15', '18:30'
   ]);
   const [novoHorarioExcecaoInput, setNovoHorarioExcecaoInput] = useState('');
+
+  // Gerador Rápido de Grade por Intervalo para a Data Específica
+  const [excecaoGeradorInicio, setExcecaoGeradorInicio] = useState('13:00');
+  const [excecaoGeradorFim, setExcecaoGeradorFim] = useState('19:30');
+  const [excecaoGeradorIntervalo, setExcecaoGeradorIntervalo] = useState('75');
 
   // Sincroniza estado inicial com configClinica
   useEffect(() => {
@@ -231,6 +238,35 @@ export const AgendamentosView: React.FC<AgendamentosViewProps> = ({
     setNovaExcecaoHorarios(['08:30', '09:45', '11:00', '12:15']);
     setNovaExcecaoMotivo('Tarde fechada - Atendimento apenas pela manhã');
     onShowToast('Horários da Manhã Definidos', 'Horários das 08:30 às 12:15 preenchidos.', 'info');
+  };
+
+  const handleGerarGradeExcecao = () => {
+    const [hIni, mIni] = excecaoGeradorInicio.split(':').map(Number);
+    const [hFim, mFim] = excecaoGeradorFim.split(':').map(Number);
+    const intervaloMin = parseInt(excecaoGeradorIntervalo, 10) || 75;
+
+    let minutosAtual = hIni * 60 + mIni;
+    const minutosFim = hFim * 60 + mFim;
+    const novos: string[] = [];
+
+    while (minutosAtual <= minutosFim) {
+      const h = Math.floor(minutosAtual / 60).toString().padStart(2, '0');
+      const m = (minutosAtual % 60).toString().padStart(2, '0');
+      novos.push(`${h}:${m}`);
+      minutosAtual += intervaloMin;
+    }
+
+    if (novos.length === 0) {
+      onShowToast('Aviso', 'O horário inicial deve ser anterior ao horário final.', 'error');
+      return;
+    }
+
+    setNovaExcecaoHorarios(novos);
+    onShowToast(
+      'Grade de Horários Gerada!',
+      `${novos.length} horários gerados para esta data (${excecaoGeradorInicio} às ${excecaoGeradorFim} a cada ${intervaloMin} min).`,
+      'success'
+    );
   };
 
   const handleSalvarDisponibilidade = () => {
@@ -622,61 +658,93 @@ Estamos com seu horário reservado e preparando a sala com muito carinho. Qualqu
                         <button
                           id={`btn-pix-ag-${ag.id}`}
                           onClick={() => onOpenPixModal(ag)}
-                          className="px-3 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs touch-manipulation min-h-[40px]"
-                          title="Gerar / Ver Cobrança Pix Inter para o Sinal"
+                          className="px-3 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs touch-manipulation min-h-[40px] cursor-pointer"
+                          title="Gerar / Ver Cobrança Pix Inter para o Sinal de 50%"
                         >
                           <QrCode className="w-4 h-4" />
                           <span>Cobrar Pix 50%</span>
                         </button>
 
                         <button
+                          id={`btn-confirmar-sinal-${ag.id}`}
                           onClick={() => onConfirmarSinal(ag.id, 'pix_inter')}
-                          className="px-3 py-2 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all touch-manipulation min-h-[40px]"
-                          title="Marcar que o cliente já transferiu o sinal de 50%"
+                          className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all touch-manipulation min-h-[40px] cursor-pointer shadow-2xs"
+                          title="Confirmar recebimento de 50% (Sinal recebido e registrado no Financeiro)"
                         >
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                           <span>Confirmar 50%</span>
+                        </button>
+
+                        <button
+                          id={`btn-confirmar-integral-${ag.id}`}
+                          onClick={() => {
+                            if (onConfirmarPagamentoIntegral) {
+                              onConfirmarPagamentoIntegral(ag.id, 'pix_inter');
+                            } else {
+                              onConfirmarSinal(ag.id, 'pix_inter');
+                            }
+                          }}
+                          className="px-3 py-2 bg-slate-900 hover:bg-black active:bg-slate-950 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs touch-manipulation min-h-[40px] cursor-pointer"
+                          title="Confirmar Pagamento Integral (100% pago à vista/antecipado)"
+                        >
+                          <DollarSign className="w-4 h-4 text-emerald-400" />
+                          <span>Pagamento Integral</span>
                         </button>
                       </>
                     )}
 
                     {statusPag === 'pago_sinal' && (
-                      <button
-                        id={`btn-concluir-ag-${ag.id}`}
-                        onClick={() => onReceberRestanteEConcluir(ag)}
-                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs touch-manipulation min-h-[40px]"
-                        title="Receber os 50% restantes e concluir o atendimento"
-                      >
-                        <DollarSign className="w-4 h-4" />
-                        <span>Receber R$ {ag.valorRestante.toFixed(2)} (Quitar)</span>
-                      </button>
+                      <>
+                        <button
+                          id={`btn-concluir-ag-${ag.id}`}
+                          onClick={() => onReceberRestanteEConcluir(ag)}
+                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs touch-manipulation min-h-[40px] cursor-pointer"
+                          title="Receber os 50% restantes e registrar no Financeiro"
+                        >
+                          <DollarSign className="w-4 h-4" />
+                          <span>Quitar Restante (R$ {ag.valorRestante.toFixed(2)})</span>
+                        </button>
+
+                        <button
+                          id={`btn-quitar-integral-${ag.id}`}
+                          onClick={() => {
+                            if (onConfirmarPagamentoIntegral) {
+                              onConfirmarPagamentoIntegral(ag.id, 'pix_inter');
+                            } else {
+                              onReceberRestanteEConcluir(ag);
+                            }
+                          }}
+                          className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all touch-manipulation min-h-[40px] cursor-pointer"
+                          title="Marcar como 100% Quitado"
+                        >
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span>100% Pago</span>
+                        </button>
+                      </>
                     )}
 
-                    {statusPag === 'pago_integral' && ag.status !== 'concluido' && (
-                      <button
-                        onClick={() => onReceberRestanteEConcluir(ag)}
-                        className="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs touch-manipulation min-h-[40px]"
-                      >
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        <span>Concluir Sessão</span>
-                      </button>
+                    {statusPag === 'pago_integral' && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2.5 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                          100% Pago
+                        </span>
+                        {ag.status !== 'concluido' && (
+                          <button
+                            onClick={() => onReceberRestanteEConcluir(ag)}
+                            className="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs touch-manipulation min-h-[40px] cursor-pointer"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Concluir Sessão</span>
+                          </button>
+                        )}
+                      </div>
                     )}
-
-                    {/* Botão de Evolução Clínica */}
-                    <button
-                      id={`btn-evolucao-ag-${ag.id}`}
-                      onClick={() => onIniciarEvolucao(ag)}
-                      className="px-3 py-2 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs touch-manipulation min-h-[40px]"
-                      title="Registrar nota de evolução e relatório em PDF"
-                    >
-                      <FileText className="w-4 h-4" />
-                      <span>Evolução</span>
-                    </button>
 
                     {/* Lembrete WhatsApp */}
                     <button
                       onClick={() => handleEnviarLembrete(ag)}
-                      className="p-2 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors touch-manipulation min-h-[40px] min-w-[40px] flex items-center justify-center"
+                      className="p-2 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors touch-manipulation min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
                       title="Enviar Lembrete de Horário no WhatsApp"
                     >
                       <Send className="w-4 h-4" />
@@ -685,7 +753,7 @@ Estamos com seu horário reservado e preparando a sala com muito carinho. Qualqu
                     {/* Excluir */}
                     <button
                       onClick={() => onExcluirAgendamento(ag.id)}
-                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors touch-manipulation min-h-[40px] min-w-[40px] flex items-center justify-center"
+                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors touch-manipulation min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
                       title="Excluir Agendamento"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -1003,6 +1071,58 @@ Estamos com seu horário reservado e preparando a sala com muito carinho. Qualqu
                           >
                             <Plus className="w-3 h-3" />
                             <span>Adicionar Horário na Data</span>
+                          </button>
+                        </div>
+
+                        {/* Gerador Rápido de Grade por Intervalo para a Data */}
+                        <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-2 mt-2">
+                          <div className="flex items-center gap-1.5 text-emerald-950">
+                            <Clock className="w-3.5 h-3.5 text-emerald-700" />
+                            <span className="font-bold text-xs">⚡ Gerador Rápido de Grade por Intervalo (Para Esta Data)</span>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <span className="text-[10px] font-semibold text-emerald-900 block mb-0.5">Início:</span>
+                              <input
+                                type="time"
+                                value={excecaoGeradorInicio}
+                                onChange={(e) => setExcecaoGeradorInicio(e.target.value)}
+                                className="w-full px-2 py-1 rounded-lg border border-emerald-300 text-xs font-mono bg-white text-center font-bold"
+                              />
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-semibold text-emerald-900 block mb-0.5">Término:</span>
+                              <input
+                                type="time"
+                                value={excecaoGeradorFim}
+                                onChange={(e) => setExcecaoGeradorFim(e.target.value)}
+                                className="w-full px-2 py-1 rounded-lg border border-emerald-300 text-xs font-mono bg-white text-center font-bold"
+                              />
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-semibold text-emerald-900 block mb-0.5">Intervalo:</span>
+                              <select
+                                value={excecaoGeradorIntervalo}
+                                onChange={(e) => setExcecaoGeradorIntervalo(e.target.value)}
+                                className="w-full px-1.5 py-1 rounded-lg border border-emerald-300 text-xs font-mono bg-white text-center font-bold"
+                              >
+                                <option value="45">45 min</option>
+                                <option value="60">60 min</option>
+                                <option value="75">75 min (Padrão)</option>
+                                <option value="90">90 min</option>
+                                <option value="120">120 min</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleGerarGradeExcecao}
+                            className="w-full py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span>Gerar Grade de Horários para esta Data</span>
                           </button>
                         </div>
                       </div>

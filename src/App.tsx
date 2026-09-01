@@ -650,17 +650,22 @@ export default function App() {
     }
   };
 
-  const handleConfirmarSinal = async (agendamentoId: string, metodo: 'pix_infinitepay' | 'pix_inter' | 'cartao_credito' | 'dinheiro' = 'pix_infinitepay') => {
+  const handleConfirmarSinal = async (agendamentoId: string, metodo: 'pix_infinitepay' | 'pix_inter' | 'cartao_credito' | 'dinheiro' = 'pix_inter') => {
     const ag = agendamentos.find((a) => a.id === agendamentoId);
     if (!ag) return;
 
     const updated: Agendamento = {
       ...ag,
-      status: 'sinal_pago',
+      status: 'confirmado',
       statusPagamento: 'pago_sinal',
       metodoSinal: metodo,
       sinalPagoEm: new Date().toISOString(),
     };
+
+    // Atualiza estado local imediatamente
+    const listaAg = agendamentos.map((a) => (a.id === agendamentoId ? updated : a));
+    setAgendamentos(listaAg);
+    StorageService.saveAgendamentos(listaAg);
 
     // Update in Google Calendar if synced
     const token = getCachedGoogleAccessToken();
@@ -668,28 +673,92 @@ export default function App() {
       atualizarEventoGoogleCalendar(updated, clinica, token).catch(console.warn);
     }
 
-    await saveAgendamentoFirestore(updated);
+    if (firebaseUser) {
+      await saveAgendamentoFirestore(updated);
+    }
 
     // Register financial transaction (50% signal)
+    const tx: TransacaoFinanceira = {
+      id: `fin-sinal-${Date.now()}`,
+      tipo: 'receita',
+      categoria: 'receita_sinal',
+      descricao: `Sinal 50% Pix - ${ag.pacienteNome} (${ag.procedimentoNome})`,
+      valor: ag.valorSinal,
+      data: new Date().toISOString().split('T')[0],
+      formaPagamento: metodo,
+      agendamentoId: ag.id,
+      pacienteId: ag.pacienteId,
+      pacienteNome: ag.pacienteNome,
+      status: 'confirmado',
+      comprovanteRef: `PIX-SINAL-${Math.floor(100000 + Math.random() * 900000)}`,
+      criadoEm: new Date().toISOString(),
+    };
+
+    const listaFin = [tx, ...financeiro.filter((f) => f.id !== tx.id)];
+    setFinanceiro(listaFin);
+    StorageService.saveFinanceiro(listaFin);
     if (firebaseUser) {
-      const tx: TransacaoFinanceira = {
-        id: `fin-sinal-${Date.now()}`,
-        tipo: 'receita',
-        categoria: 'receita_sinal',
-        descricao: `Sinal 50% InfinitePay - ${ag.pacienteNome} (${ag.procedimentoNome})`,
-        valor: ag.valorSinal,
-        data: new Date().toISOString().split('T')[0],
-        formaPagamento: metodo,
-        agendamentoId: ag.id,
-        pacienteId: ag.pacienteId,
-        pacienteNome: ag.pacienteNome,
-        status: 'confirmado',
-        comprovanteRef: `INFPAY-${Math.floor(100000 + Math.random() * 900000)}`,
-        criadoEm: new Date().toISOString(),
-      };
       await saveFinanceiroFirestore(tx);
     }
-    showToast('Sinal 50% Confirmado!', `Recebimento de R$ ${ag.valorSinal.toFixed(2)} registrado.`, 'success');
+
+    showToast('Sinal 50% Confirmado!', `Recebimento de R$ ${ag.valorSinal.toFixed(2)} registrado na agenda e no financeiro.`, 'success');
+  };
+
+  const handleConfirmarPagamentoIntegral = async (agendamentoId: string, metodo: 'pix_infinitepay' | 'pix_inter' | 'cartao_credito' | 'dinheiro' = 'pix_inter') => {
+    const ag = agendamentos.find((a) => a.id === agendamentoId);
+    if (!ag) return;
+
+    const valorTotal = ag.valorTotal || (ag.valorSinal + ag.valorRestante);
+
+    const updated: Agendamento = {
+      ...ag,
+      status: 'confirmado',
+      statusPagamento: 'pago_integral',
+      metodoSinal: metodo,
+      sinalPagoEm: ag.sinalPagoEm || new Date().toISOString(),
+      restantePagoEm: new Date().toISOString(),
+    };
+
+    // Atualiza estado local imediatamente
+    const listaAg = agendamentos.map((a) => (a.id === agendamentoId ? updated : a));
+    setAgendamentos(listaAg);
+    StorageService.saveAgendamentos(listaAg);
+
+    // Update in Google Calendar if synced
+    const token = getCachedGoogleAccessToken();
+    if (token && updated.googleEventId) {
+      atualizarEventoGoogleCalendar(updated, clinica, token).catch(console.warn);
+    }
+
+    if (firebaseUser) {
+      await saveAgendamentoFirestore(updated);
+    }
+
+    // Register financial transaction (100% integral)
+    const tx: TransacaoFinanceira = {
+      id: `fin-integral-${Date.now()}`,
+      tipo: 'receita',
+      categoria: 'receita_procedimento',
+      descricao: `Pagamento Integral (100%) - ${ag.pacienteNome} (${ag.procedimentoNome})`,
+      valor: valorTotal,
+      data: new Date().toISOString().split('T')[0],
+      formaPagamento: metodo,
+      agendamentoId: ag.id,
+      pacienteId: ag.pacienteId,
+      pacienteNome: ag.pacienteNome,
+      status: 'confirmado',
+      comprovanteRef: `PAG-INT-${Math.floor(100000 + Math.random() * 900000)}`,
+      criadoEm: new Date().toISOString(),
+    };
+
+    const listaFin = [tx, ...financeiro.filter((f) => f.id !== tx.id)];
+    setFinanceiro(listaFin);
+    StorageService.saveFinanceiro(listaFin);
+    if (firebaseUser) {
+      await saveFinanceiroFirestore(tx);
+    }
+
+    showToast('Pagamento Integral Confirmado!', `Recebimento total de R$ ${valorTotal.toFixed(2)} registrado com sucesso no financeiro.`, 'success');
   };
 
   const handleReceberRestanteEConcluir = async (ag: Agendamento) => {
@@ -700,15 +769,23 @@ export default function App() {
       restantePagoEm: new Date().toISOString(),
     };
 
+    // Atualiza estado local imediatamente
+    const listaAg = agendamentos.map((a) => (a.id === ag.id ? updated : a));
+    setAgendamentos(listaAg);
+    StorageService.saveAgendamentos(listaAg);
+
     // Update in Google Calendar if synced
     const token = getCachedGoogleAccessToken();
     if (token && updated.googleEventId) {
       atualizarEventoGoogleCalendar(updated, clinica, token).catch(console.warn);
     }
 
-    await saveAgendamentoFirestore(updated);
-
     if (firebaseUser) {
+      await saveAgendamentoFirestore(updated);
+    }
+
+    // Se ainda havia valor restante pendente a receber
+    if (ag.valorRestante > 0) {
       const tx: TransacaoFinanceira = {
         id: `fin-restante-${Date.now()}`,
         tipo: 'receita',
@@ -724,11 +801,17 @@ export default function App() {
         comprovanteRef: `INTER-POS-${Math.floor(1000 + Math.random() * 9000)}`,
         criadoEm: new Date().toISOString(),
       };
-      await saveFinanceiroFirestore(tx);
+
+      const listaFin = [tx, ...financeiro.filter((f) => f.id !== tx.id)];
+      setFinanceiro(listaFin);
+      StorageService.saveFinanceiro(listaFin);
+      if (firebaseUser) {
+        await saveFinanceiroFirestore(tx);
+      }
     }
 
     showToast(
-      'Atendimento Concluído & 50% Quitado!',
+      'Atendimento Concluído & Quitado!',
       `Recebimento de R$ ${ag.valorRestante.toFixed(2)} registrado no caixa.`,
       'success'
     );
@@ -744,7 +827,7 @@ export default function App() {
     };
 
     if (novoStatus === 'pago_sinal') {
-      updated.status = 'sinal_pago';
+      updated.status = 'confirmado';
       updated.sinalPagoEm = updated.sinalPagoEm || new Date().toISOString();
     } else if (novoStatus === 'pago_integral') {
       updated.status = 'concluido';
@@ -754,12 +837,18 @@ export default function App() {
       updated.status = 'aguardando_sinal';
     }
 
+    const listaAg = agendamentos.map((a) => (a.id === agendamentoId ? updated : a));
+    setAgendamentos(listaAg);
+    StorageService.saveAgendamentos(listaAg);
+
     const token = getCachedGoogleAccessToken();
     if (token && updated.googleEventId) {
       atualizarEventoGoogleCalendar(updated, clinica, token).catch(console.warn);
     }
 
-    await saveAgendamentoFirestore(updated);
+    if (firebaseUser) {
+      await saveAgendamentoFirestore(updated);
+    }
     showToast('Status de Pagamento Atualizado!', `Status alterado para: ${novoStatus.toUpperCase()}`, 'success');
   };
 
@@ -1081,6 +1170,7 @@ export default function App() {
                   onOpenNovoAgendamento={() => setModalNovoAgendamento(true)}
                   onOpenPixModal={(ag) => setAgendamentoPixModal(ag)}
                   onConfirmarSinal={handleConfirmarSinal}
+                  onConfirmarPagamentoIntegral={handleConfirmarPagamentoIntegral}
                   onReceberRestanteEConcluir={handleReceberRestanteEConcluir}
                   onAtualizarStatusPagamento={handleAtualizarStatusPagamento}
                   onSincronizarGoogleCalendar={handleSincronizarAgendamentoGoogle}

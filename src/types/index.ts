@@ -85,7 +85,11 @@ export interface EvolucaoClinica {
   // Regiões trabalhadas
   regioesTrabalhadas: string[];
   
-  // Detalhes Clínicos
+  // Detalhes Clínicos & Antropometria da Sessão (Acompanhamento de Drenagem / Perda de Líquidos)
+  pesoKg?: string | number; // Peso inicial / registrado na sessão (ex: "65.4" ou "65.4 kg")
+  pesoFinalSessaoKg?: string | number; // Peso pós-sessão/drenagem (ex: "64.9 kg") - Opcional
+  circunferenciaCm?: string; // Medidas de circunferência (ex: "Abdômen: 78cm, Coxa: 54cm") - Opcional
+
   queixaPrincipal: string;
   manobrasAplicadas: string; // Ex: Fricção profunda, trigger points, drenagem linfática manual Vodder
   reacaoTecidual: string; // Ex: Hiperemia transitória moderada, relaxamento miofascial expressivo

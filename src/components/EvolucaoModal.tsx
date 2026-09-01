@@ -165,6 +165,21 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
     onShowToast('Região Adicionada', `"${limpo}" foi salva nas opções rápidas.`, 'success');
   };
 
+  // Acompanhamento Corporal / Antropometria da Sessão (Drenagem & Perda de Líquidos)
+  const [pesoKg, setPesoKg] = useState<string>(
+    evolucaoExistente?.pesoKg !== undefined
+      ? evolucaoExistente.pesoKg.toString()
+      : (paciente.peso ? paciente.peso.replace(/[^\d.,]/g, '').replace(',', '.') : '')
+  );
+  const [pesoFinalSessaoKg, setPesoFinalSessaoKg] = useState<string>(
+    evolucaoExistente?.pesoFinalSessaoKg !== undefined
+      ? evolucaoExistente.pesoFinalSessaoKg.toString()
+      : ''
+  );
+  const [circunferenciaCm, setCircunferenciaCm] = useState<string>(
+    evolucaoExistente?.circunferenciaCm || ''
+  );
+
   // Relatório de Anamnese & Evolução Clínica
   const [queixaPrincipal, setQueixaPrincipal] = useState(
     evolucaoExistente?.queixaPrincipal || paciente.queixaInicial || ''
@@ -217,6 +232,9 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
       terapeutaResponsavel,
       evaInicial,
       evaFinal,
+      pesoKg: pesoKg.trim() ? pesoKg.trim() : undefined,
+      pesoFinalSessaoKg: pesoFinalSessaoKg.trim() ? pesoFinalSessaoKg.trim() : undefined,
+      circunferenciaCm: circunferenciaCm.trim() ? circunferenciaCm.trim() : undefined,
       regioesTrabalhadas,
       queixaPrincipal,
       manobrasAplicadas,
@@ -500,12 +518,86 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
             </div>
           </div>
 
-          {/* Seção 3: Regiões Anatômicas */}
+          {/* Seção Antropométrica da Sessão: Peso / Massa Corporal & Perda de Líquidos (Drenagem) */}
+          <div className="bg-sky-50/70 p-3.5 rounded-lg border border-sky-200/80 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <HeartPulse className="w-4 h-4 text-sky-700" />
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  3. Acompanhamento Corporal & Perda de Líquidos (Sessão / Drenagem)
+                </h4>
+              </div>
+              {(() => {
+                const pIni = parseFloat(pesoKg.replace(',', '.'));
+                const pFim = parseFloat(pesoFinalSessaoKg.replace(',', '.'));
+                if (!isNaN(pIni) && !isNaN(pFim) && pIni > 0 && pFim > 0) {
+                  const dif = pIni - pFim;
+                  const difGramas = Math.round(dif * 1000);
+                  return (
+                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded font-mono border ${
+                      dif > 0
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : 'bg-slate-100 text-slate-700 border-slate-300'
+                    }`}>
+                      {dif > 0 ? `💧 Perda Líquida: -${dif.toFixed(2)} kg (-${difGramas}g)` : `Variação: ${dif.toFixed(2)} kg`}
+                    </span>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  ⚖️ Peso Inicial da Sessão (kg)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: 68.4"
+                  value={pesoKg}
+                  onChange={(e) => setPesoKg(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-md border border-sky-300 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono font-bold text-slate-900"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">Peso na chegada à clínica</span>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  💧 Peso Pós-Sessão / Drenagem (kg)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: 67.9 (Opcional)"
+                  value={pesoFinalSessaoKg}
+                  onChange={(e) => setPesoFinalSessaoKg(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-md border border-sky-300 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono font-bold text-sky-950"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">Para tratamentos de retenção/edema</span>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  📏 Medidas / Circunferências (cm)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Abdômen: 78cm, Coxa: 54cm"
+                  value={circunferenciaCm}
+                  onChange={(e) => setCircunferenciaCm(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-md border border-sky-300 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">Medidas corporais opcionais</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Seção 4: Regiões Anatômicas */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                 <HeartPulse className="w-3.5 h-3.5 text-emerald-600" />
-                3. Regiões Anatômicas Trabalhadas
+                4. Regiões Anatômicas Trabalhadas
               </label>
               <button
                 type="button"
@@ -572,11 +664,11 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
             </div>
           </div>
 
-          {/* Seção 4: Relatório de Anamnese & Evolução da Sessão */}
+          {/* Seção 5: Relatório de Anamnese & Evolução da Sessão */}
           <div className="space-y-3 text-xs">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-emerald-600" />
-              4. Relatório de Anamnese & Evolução da Sessão
+              5. Relatório de Anamnese & Evolução da Sessão
             </h4>
 
             <div>

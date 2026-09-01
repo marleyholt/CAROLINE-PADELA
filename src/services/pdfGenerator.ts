@@ -385,19 +385,40 @@ export function gerarRelatorioEvolucaoPDFNodes(
   doc.setFont('helvetica', 'normal');
   doc.text(paciente.nome, margin + 17, y);
 
-  // Dados Físicos Opcionais da Anamnese (Peso, Altura, Idade) - Só aparecem no relatório se preenchidos
+  // Dados Físicos da Anamnese (Idade e Altura da ficha) e Peso / Medidas específicos da Sessão
   const dadosFisicos: string[] = [];
   if (paciente.idade && paciente.idade.toString().trim() !== '') {
     const idStr = paciente.idade.toString().trim();
     dadosFisicos.push(`Idade: ${idStr.toLowerCase().includes('ano') ? idStr : `${idStr} anos`}`);
   }
-  if (paciente.peso && paciente.peso.toString().trim() !== '') {
-    const pStr = paciente.peso.toString().trim();
-    dadosFisicos.push(`Peso: ${pStr.toLowerCase().includes('kg') ? pStr : `${pStr} kg`}`);
-  }
   if (paciente.altura && paciente.altura.toString().trim() !== '') {
     const aStr = paciente.altura.toString().trim();
     dadosFisicos.push(`Altura: ${aStr.toLowerCase().includes('m') || aStr.toLowerCase().includes('cm') ? aStr : `${aStr} m`}`);
+  }
+  
+  // Peso específico da sessão (com acompanhamento de perda líquida se houver pós-drenagem)
+  if (evolucao.pesoKg && evolucao.pesoKg.toString().trim() !== '') {
+    const pStr = evolucao.pesoKg.toString().trim();
+    let textoPeso = `Peso Sessão: ${pStr.toLowerCase().includes('kg') ? pStr : `${pStr} kg`}`;
+    if (evolucao.pesoFinalSessaoKg && evolucao.pesoFinalSessaoKg.toString().trim() !== '') {
+      const pFimStr = evolucao.pesoFinalSessaoKg.toString().trim();
+      const pIniVal = parseFloat(pStr.replace(',', '.'));
+      const pFimVal = parseFloat(pFimStr.replace(',', '.'));
+      if (!isNaN(pIniVal) && !isNaN(pFimVal) && pIniVal > pFimVal) {
+        const perda = (pIniVal - pFimVal).toFixed(2);
+        textoPeso += ` (Pós: ${pFimStr} kg | Perda Líquida: -${perda} kg)`;
+      } else {
+        textoPeso += ` (Pós: ${pFimStr} kg)`;
+      }
+    }
+    dadosFisicos.push(textoPeso);
+  } else if (paciente.peso && paciente.peso.toString().trim() !== '') {
+    const pStr = paciente.peso.toString().trim();
+    dadosFisicos.push(`Peso: ${pStr.toLowerCase().includes('kg') ? pStr : `${pStr} kg`}`);
+  }
+
+  if (evolucao.circunferenciaCm && evolucao.circunferenciaCm.trim() !== '') {
+    dadosFisicos.push(`Medidas: ${evolucao.circunferenciaCm.trim()}`);
   }
 
   if (dadosFisicos.length > 0) {
