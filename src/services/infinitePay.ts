@@ -103,6 +103,207 @@ export async function gerarQRCodeDataUrl(payloadPix: string): Promise<string> {
   }
 }
 
+export interface InfinitePayCheckoutParams {
+  handle: string; // Ex: carolpadela (sem $)
+  valor: number; // Em reais, ex: 80.00
+  descricaoItem: string;
+  orderNsu: string; // ID do agendamento
+  redirectUrl?: string; // URL para onde o cliente volta após pagar
+  webhookUrl?: string; // URL do webhook no servidor
+  cliente?: {
+    nome: string;
+    email?: string;
+    telefone?: string;
+  };
+}
+
+export interface InfinitePayCheckoutResult {
+  sucesso: boolean;
+  checkoutUrl: string;
+  slug?: string;
+  orderNsu: string;
+  mensagem?: string;
+}
+
+export interface InfinitePayRetornoParams {
+  orderNsu?: string;
+  slug?: string;
+  transactionNsu?: string;
+  receiptUrl?: string;
+  captureMethod?: string;
+  status?: string;
+}
+
+/**
+ * Cria um link de Checkout Externo oficial da InfinitePay
+ * Documentação: https://app.infinitepay.io/external-checkout#documentacao
+ */
+export async function criarCheckoutLinkInfinitePay(
+  params: InfinitePayCheckoutParams
+): Promise<InfinitePayCheckoutResult> {
+  const cleanHandle = (params.handle || 'carolpadela').replace(/^\$/, '').trim();
+  const valorCentavos = Math.round(params.valor * 100);
+
+  // Determina a URL de retorno dinamicamente se não informada
+  let returnUrl = params.redirectUrl;
+  if (!returnUrl && typeof window !== 'undefined') {
+    const origin = window.location.origin;
+    const pathname = window.location.pathname;
+    returnUrl = `${origin}${pathname}?order_nsu=${encodeURIComponent(params.orderNsu)}&status=retorno_infinitepay`;
+  }
+
+  // Prepara o payload oficial
+  const payload: any = {
+    handle: cleanHandle,
+    items: [
+      {
+        description: (params.descricaoItem || 'Sinal 50% - Agendamento').slice(0, 100),
+        price: valorCentavos,
+        quantity: 1,
+      },
+    ],
+    order_nsu: params.orderNsu,
+    redirect_url: returnUrl,
+  };
+
+  if (params.webhookUrl) {
+    payload.webhook_url = params.webhookUrl;
+  }
+
+  if (params.cliente) {
+    let cleanPhone = (params.cliente.telefone || '').replace(/\D/g, '');
+    if (cleanPhone && !cleanPhone.startsWith('55')) {
+      cleanPhone = `55${cleanPhone}`;
+    }
+    payload.customer = {
+      name: (params.cliente.nome || 'Cliente').slice(0, 100),
+      email: params.cliente.email || 'contato@carolinepadela.com.br',
+      phone_number: cleanPhone ? `+${cleanPhone}` : undefined,
+    };
+  }
+
+  try {
+    const response = await fetch('https://api.checkout.infinitepay.io/links', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const checkoutUrl = data.url || data.checkout_url || data.link || `https://checkout.infinitepay.io/pay/${data.slug}`;
+      return {
+        sucesso: true,
+        checkoutUrl,
+        slug: data.slug,
+        orderNsu: params.orderNsu,
+      };
+    } else {
+      console.warn('API InfinitePay retornou status:', response.status, 'usando fallback.');
+    }
+  } catch (err) {
+    console.warn('Falha na requisição direta API InfinitePay (esperado em clientes sem proxy ou offline):', err);
+  }
+
+  // Fallback garantido: Link direto InfiniteTag com valor formatado
+  const tagFormatada = cleanHandle.startsWith('$') ? cleanHandle : `$${cleanHandle}`;
+  const fallbackUrl = `https://infinitepay.io/${tagFormatada}`;
+
+  return {
+    sucesso: true,
+    checkoutUrl: fallbackUrl,
+    orderNsu: params.orderNsu,
+    mensagem: 'Link direto InfinitePay gerado.',
+  };
+}
+
+/**
+ * Verifica o status do pagamento na InfinitePay
+ */
+export async function verificarPagamentoInfinitePay(
+  paramsOrHandle: string | { handle: string; orderNsu?: string; slug?: string; transactionNsu?: string },
+  orderNsuParam?: string,
+  slugParam?: string,
+  transactionNsuParam?: string
+): Promise<{ pago: boolean; dados?: any }> {
+  try {
+    let handle = '';
+    let orderNsu = '';
+    let slug: string | undefined;
+    let transactionNsu: string | undefined;
+
+    if (typeof paramsOrHandle === 'object') {
+      handle = paramsOrHandle.handle;
+      orderNsu = paramsOrHandle.orderNsu || '';
+      slug = paramsOrHandle.slug;
+      transactionNsu = paramsOrHandle.transactionNsu;
+    } else {
+      handle = paramsOrHandle;
+      orderNsu = orderNsuParam || '';
+      slug = slugParam;
+      transactionNsu = transactionNsuParam;
+    }
+
+    const cleanHandle = handle.replace(/^\$/, '').trim();
+    const response = await fetch('https://api.checkout.infinitepay.io/payment_check', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        handle: cleanHandle,
+        order_nsu: orderNsu || undefined,
+        slug: slug || undefined,
+        transaction_nsu: transactionNsu || undefined,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const statusStr = (data.status || data.payment_status || '').toLowerCase();
+      const pago = statusStr === 'paid' || statusStr === 'approved' || statusStr === 'success' || data.paid === true;
+      return { pago, dados: data };
+    }
+  } catch (err) {
+    console.warn('Erro ao consultar status InfinitePay:', err);
+  }
+  return { pago: false };
+}
+
+/**
+ * Extrai os parâmetros retornados na URL após o cliente pagar no InfinitePay
+ */
+export function extrairParametrosRetornoInfinitePay(searchQuery?: string): InfinitePayRetornoParams | null {
+  if (typeof window === 'undefined' && !searchQuery) return null;
+
+  const queryString = searchQuery ?? (typeof window !== 'undefined' ? window.location.search : '');
+  const urlParams = new URLSearchParams(queryString);
+  const hash = typeof window !== 'undefined' ? window.location.hash : '';
+  const hashParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
+
+  const orderNsu = urlParams.get('order_nsu') || urlParams.get('order_id') || hashParams.get('order_nsu');
+  const slug = urlParams.get('slug') || hashParams.get('slug');
+  const transactionNsu = urlParams.get('transaction_nsu') || urlParams.get('nsu') || hashParams.get('transaction_nsu');
+  const receiptUrl = urlParams.get('receipt_url') || hashParams.get('receipt_url');
+  const captureMethod = urlParams.get('capture_method') || hashParams.get('capture_method');
+  const status = urlParams.get('status') || hashParams.get('status');
+
+  if (orderNsu || transactionNsu || slug || status) {
+    return {
+      orderNsu: orderNsu || undefined,
+      slug: slug || undefined,
+      transactionNsu: transactionNsu || undefined,
+      receiptUrl: receiptUrl || undefined,
+      captureMethod: captureMethod || undefined,
+      status: status || undefined,
+    };
+  }
+
+  return null;
+}
+
 export interface InfinitePayCobrancaPixResult {
   txid: string;
   pixCopiaECola: string;
@@ -112,6 +313,8 @@ export interface InfinitePayCobrancaPixResult {
   chavePix: string;
   infiniteTag?: string;
   linkPagamento?: string;
+  checkoutUrl?: string;
+  slug?: string;
   status: 'ATIVA' | 'CONCLUIDA';
 }
 
@@ -159,6 +362,7 @@ export async function emitirCobrancaSinalInfinitePay(
     chavePix: configInfinitePay.chavePix || '(21) 97513-4597',
     infiniteTag: configInfinitePay.infiniteTag,
     linkPagamento: linkFinal,
+    checkoutUrl: linkFinal,
     status: 'ATIVA',
   };
 }

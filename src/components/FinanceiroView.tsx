@@ -442,15 +442,19 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
             onClick={() => {
               if (procedimentos.length > 0) {
                 const proc = procedimentos[0];
-                setPacoteValorTotal((proc.precoTotal * 8).toString());
-                setPacoteValorPago((proc.precoTotal * 8).toString());
+                const qtd = proc.tipo === 'pacote' && proc.quantidadeSessoes ? proc.quantidadeSessoes : 8;
+                setPacoteTotalSessoes(qtd);
+                const valor = proc.tipo === 'pacote' ? proc.precoTotal : proc.precoTotal * qtd;
+                setPacoteValorTotal(valor.toString());
+                setPacoteValorPago(valor.toString());
+                setPacoteProcedimentoId(proc.id);
               }
               setModalNovoPacote(true);
             }}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
           >
             <Package className="w-4 h-4" />
-            <span>Novo Pacote (8 Sessões)</span>
+            <span>Novo Pacote</span>
           </button>
 
           <button
@@ -1222,15 +1226,18 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                     setPacoteProcedimentoId(e.target.value);
                     const proc = procedimentos.find((p) => p.id === e.target.value);
                     if (proc) {
-                      setPacoteValorTotal((proc.precoTotal * pacoteTotalSessoes).toString());
-                      setPacoteValorPago((proc.precoTotal * pacoteTotalSessoes).toString());
+                      const qtd = proc.tipo === 'pacote' && proc.quantidadeSessoes ? proc.quantidadeSessoes : pacoteTotalSessoes;
+                      setPacoteTotalSessoes(qtd);
+                      const valor = proc.tipo === 'pacote' ? proc.precoTotal : proc.precoTotal * qtd;
+                      setPacoteValorTotal(valor.toString());
+                      setPacoteValorPago(valor.toString());
                     }
                   }}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-800 focus:outline-none cursor-pointer"
                 >
                   {procedimentos.map((proc) => (
                     <option key={proc.id} value={proc.id}>
-                      {proc.nome} (R$ {proc.precoTotal.toFixed(2)} / sessão)
+                      {proc.nome} {proc.tipo === 'pacote' ? `(Pacote Fechado: R$ ${proc.precoTotal.toFixed(2)})` : `(R$ ${proc.precoTotal.toFixed(2)} / sessão)`}
                     </option>
                   ))}
                 </select>

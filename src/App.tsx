@@ -69,6 +69,10 @@ import {
   deletePacoteSessoesFirestore,
 } from './services/firebase';
 import {
+  extrairParametrosRetornoInfinitePay,
+  verificarPagamentoInfinitePay,
+} from './services/infinitePay';
+import {
   criarEventoGoogleCalendar,
   atualizarEventoGoogleCalendar,
   excluirEventoGoogleCalendar,
@@ -261,6 +265,88 @@ export default function App() {
       unsubPacotes();
     };
   }, []);
+
+  // 4. Detecção e Verificação de Retorno do Checkout InfinitePay (Redirect Webhook)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const retorno = extrairParametrosRetornoInfinitePay(window.location.search);
+      if (!retorno || (!retorno.orderNsu && !retorno.slug && retorno.status !== 'retorno_infinitepay')) {
+        return;
+      }
+
+      const processarRetornoInfinitePay = async () => {
+        const agId = retorno.orderNsu;
+        const ag = agendamentos.find((a) => (agId && a.id === agId) || (retorno.slug && a.slugPagamento === retorno.slug));
+
+        if (ag && ag.status !== 'sinal_pago') {
+          let confirmado = true;
+          if (inter?.infiniteTag && (retorno.slug || retorno.orderNsu)) {
+            try {
+              const check = await verificarPagamentoInfinitePay({
+                handle: inter.infiniteTag,
+                orderNsu: retorno.orderNsu,
+                slug: retorno.slug,
+              });
+              if (check && check.pago !== undefined) {
+                confirmado = check.pago;
+              }
+            } catch (e) {
+              console.warn('Verificação InfinitePay:', e);
+            }
+          }
+
+          if (confirmado) {
+            const updated: Agendamento = {
+              ...ag,
+              status: 'sinal_pago',
+              statusPagamento: 'pago_sinal',
+              metodoSinal: 'pix_infinitepay',
+              transactionNsu: retorno.transactionNsu,
+              slugPagamento: retorno.slug,
+              receiptUrl: retorno.receiptUrl,
+              sinalPagoEm: new Date().toISOString(),
+            };
+
+            // Salva agendamento confirmado
+            await saveAgendamentoFirestore(updated);
+
+            // Registra receita de 50% do sinal no Financeiro
+            const tx: TransacaoFinanceira = {
+              id: `fin-sinal-${Date.now()}`,
+              tipo: 'receita',
+              categoria: 'receita_sinal',
+              descricao: `Sinal 50% InfinitePay - ${ag.pacienteNome} (${ag.procedimentoNome})`,
+              valor: ag.valorSinal,
+              data: new Date().toISOString().split('T')[0],
+              formaPagamento: 'pix_infinitepay',
+              agendamentoId: ag.id,
+              pacienteId: ag.pacienteId,
+              pacienteNome: ag.pacienteNome,
+              status: 'confirmado',
+              comprovanteRef: retorno.transactionNsu || `INFPAY-${Date.now()}`,
+              criadoEm: new Date().toISOString(),
+            };
+            await saveFinanceiroFirestore(tx);
+
+            showToast('Pagamento Confirmado na InfinitePay!', `Sinal de R$ ${ag.valorSinal.toFixed(2)} recebido. Horário de ${ag.pacienteNome} garantido!`, 'success');
+          }
+        }
+
+        // Limpa os parâmetros de busca da URL para não reexecutar em recarregamentos
+        try {
+          const cleanUrl = window.location.pathname;
+          window.history.replaceState({}, document.title, cleanUrl);
+        } catch {}
+      };
+
+      if (agendamentos.length > 0) {
+        processarRetornoInfinitePay();
+      }
+    } catch (err) {
+      console.warn('Erro ao processar retorno InfinitePay:', err);
+    }
+  }, [agendamentos, inter, showToast]);
 
   // Save changes to Firestore
   const handleSaveClinica = async (newClinica: ConfiguracaoClinica) => {
@@ -473,6 +559,75 @@ export default function App() {
       await saveEvolucaoFirestore(novaSessaoPendente);
     }
 
+    // 4. Se for agendamento de PACOTE: Inserir diretamente na aba de Controle de Pacotes e nas Movimentações Financeiras
+    const procAgendado = procedimentos.find(
+      (p) => p.id === agendamentoFinal.procedimentoId || p.nome.toLowerCase() === agendamentoFinal.procedimentoNome.toLowerCase()
+    );
+    const isPacote =
+      procAgendado?.tipo === 'pacote' ||
+      (procAgendado?.quantidadeSessoes && procAgendado.quantidadeSessoes > 1) ||
+      agendamentoFinal.procedimentoNome.toLowerCase().includes('pacote');
+
+    if (isPacote) {
+      const totalSessoesPacote = procAgendado?.quantidadeSessoes || 8;
+      const pacoteId = `pacote-ag-${agendamentoFinal.id}`;
+      const valorJaPago = agendamentoFinal.statusPagamento === 'pago_integral' 
+        ? agendamentoFinal.valorTotal 
+        : (agendamentoFinal.statusPagamento === 'pago_sinal' ? agendamentoFinal.valorSinal : 0);
+
+      const novoPacote: PacoteSessoes = {
+        id: pacoteId,
+        pacienteId: targetPacienteId,
+        pacienteNome: targetPacienteNome,
+        pacienteWhatsapp: agendamentoFinal.pacienteWhatsapp,
+        procedimentoId: procAgendado?.id || agendamentoFinal.procedimentoId,
+        procedimentoNome: agendamentoFinal.procedimentoNome,
+        totalSessoes: totalSessoesPacote,
+        sessoesRealizadas: 0,
+        valorTotal: agendamentoFinal.valorTotal,
+        valorPago: valorJaPago,
+        statusPagamento: valorJaPago >= agendamentoFinal.valorTotal ? 'pago_integral' : (valorJaPago > 0 ? 'parcial' : 'pendente'),
+        status: 'ativo',
+        historicoRealizacoes: [],
+        dataContratacao: agendamentoFinal.data,
+        observacoes: agendamentoFinal.observacoes || `Pacote agendado para ${agendamentoFinal.data} às ${agendamentoFinal.horario}`,
+        criadoEm: new Date().toISOString(),
+      };
+
+      const listaPacotes = [novoPacote, ...pacotesSessoes.filter((p) => p.id !== novoPacote.id)];
+      setPacotesSessoes(listaPacotes);
+      StorageService.savePacotes(listaPacotes);
+      if (firebaseUser) {
+        await savePacoteSessoesFirestore(novoPacote);
+      }
+
+      // Adiciona lançamento na aba de movimentações financeiras
+      if (valorJaPago > 0) {
+        const txPacote: TransacaoFinanceira = {
+          id: `fin-pacote-${agendamentoFinal.id}`,
+          tipo: 'receita',
+          categoria: 'receita_pacote',
+          categoriaNome: `Pacote ${totalSessoesPacote}x ${agendamentoFinal.procedimentoNome}`,
+          descricao: `Venda de Pacote ${totalSessoesPacote} Sessões - ${targetPacienteNome}`,
+          valor: valorJaPago,
+          data: agendamentoFinal.data,
+          formaPagamento: (agendamentoFinal.metodoSinal as any) || 'pix_infinitepay',
+          pacienteId: targetPacienteId,
+          pacienteNome: targetPacienteNome,
+          pacoteId: novoPacote.id,
+          status: 'confirmado',
+          criadoEm: new Date().toISOString(),
+        };
+
+        const listaFin = [txPacote, ...financeiro.filter((f) => f.id !== txPacote.id)];
+        setFinanceiro(listaFin);
+        StorageService.saveFinanceiro(listaFin);
+        if (firebaseUser) {
+          await saveFinanceiroFirestore(txPacote);
+        }
+      }
+    }
+
     setModalNovoAgendamento(false);
 
     if (abrirPix) {
@@ -490,7 +645,7 @@ export default function App() {
     }
   };
 
-  const handleConfirmarSinal = async (agendamentoId: string, metodo: 'pix_inter') => {
+  const handleConfirmarSinal = async (agendamentoId: string, metodo: 'pix_infinitepay' | 'pix_inter' | 'cartao_credito' | 'dinheiro' = 'pix_infinitepay') => {
     const ag = agendamentos.find((a) => a.id === agendamentoId);
     if (!ag) return;
 
@@ -516,15 +671,15 @@ export default function App() {
         id: `fin-sinal-${Date.now()}`,
         tipo: 'receita',
         categoria: 'receita_sinal',
-        descricao: `Sinal 50% Pix Inter - ${ag.pacienteNome} (${ag.procedimentoNome})`,
+        descricao: `Sinal 50% InfinitePay - ${ag.pacienteNome} (${ag.procedimentoNome})`,
         valor: ag.valorSinal,
         data: new Date().toISOString().split('T')[0],
-        formaPagamento: 'pix_inter',
+        formaPagamento: metodo,
         agendamentoId: ag.id,
         pacienteId: ag.pacienteId,
         pacienteNome: ag.pacienteNome,
         status: 'confirmado',
-        comprovanteRef: `INTER-PIX-${Math.floor(100000 + Math.random() * 900000)}`,
+        comprovanteRef: `INFPAY-${Math.floor(100000 + Math.random() * 900000)}`,
         criadoEm: new Date().toISOString(),
       };
       await saveFinanceiroFirestore(tx);
@@ -917,6 +1072,7 @@ export default function App() {
                   configClinica={clinica}
                   configInter={inter}
                   isGoogleConnected={isGoogleConnected}
+                  onSalvarClinica={handleSaveClinica}
                   onOpenNovoAgendamento={() => setModalNovoAgendamento(true)}
                   onOpenPixModal={(ag) => setAgendamentoPixModal(ag)}
                   onConfirmarSinal={handleConfirmarSinal}

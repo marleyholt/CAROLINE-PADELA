@@ -344,6 +344,28 @@ export const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
             </div>
 
             <div>
+              <label className="font-semibold text-[11px] text-slate-700 block mb-1">Webhook URL InfinitePay (Opcional)</label>
+              <input
+                type="text"
+                placeholder="https://seusite.com/api/webhook/infinitepay"
+                value={infinitePay.webhookUrl || ''}
+                onChange={(e) => setInfinitePay({ ...infinitePay, webhookUrl: e.target.value })}
+                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-mono bg-slate-50 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-[11px] text-slate-700 block mb-1">URL de Redirecionamento (Pós-Pagamento)</label>
+              <input
+                type="text"
+                placeholder="Ex: https://seusite.com ou deixar automático"
+                value={infinitePay.redirectUrl || ''}
+                onChange={(e) => setInfinitePay({ ...infinitePay, redirectUrl: e.target.value })}
+                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-mono bg-slate-50 focus:outline-none"
+              />
+            </div>
+
+            <div>
               <label className="font-semibold text-[11px] text-slate-700 block mb-1">Ambiente</label>
               <select
                 value={infinitePay.ambiente}

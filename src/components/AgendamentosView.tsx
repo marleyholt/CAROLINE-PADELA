@@ -17,6 +17,10 @@ import {
   ShieldAlert,
   CreditCard,
   Phone,
+  Sliders,
+  Settings2,
+  Check,
+  X,
 } from 'lucide-react';
 import { Agendamento, ConfiguracaoClinica, ConfiguracaoInter, StatusPagamento } from '../types';
 import { abrirWhatsAppComTexto } from '../services/pdfGenerator';
@@ -27,6 +31,7 @@ interface AgendamentosViewProps {
   configClinica: ConfiguracaoClinica;
   configInter: ConfiguracaoInter;
   isGoogleConnected: boolean;
+  onSalvarClinica?: (config: ConfiguracaoClinica) => void;
   onOpenNovoAgendamento: () => void;
   onOpenPixModal: (agendamento: Agendamento) => void;
   onConfirmarSinal: (agendamentoId: string, metodo: 'pix_inter') => void;
@@ -43,6 +48,7 @@ export const AgendamentosView: React.FC<AgendamentosViewProps> = ({
   configClinica,
   configInter,
   isGoogleConnected,
+  onSalvarClinica,
   onOpenNovoAgendamento,
   onOpenPixModal,
   onConfirmarSinal,
@@ -59,6 +65,99 @@ export const AgendamentosView: React.FC<AgendamentosViewProps> = ({
   const [filtroPagamento, setFiltroPagamento] = useState<string>('todos');
   const [busca, setBusca] = useState('');
   const [syncingId, setSyncingId] = useState<string | null>(null);
+
+  // Modal de Configuração de Disponibilidade da Terapeuta
+  const [modalDisponibilidade, setModalDisponibilidade] = useState(false);
+  const [diasAtendimento, setDiasAtendimento] = useState<number[]>(
+    configClinica.diasSemanaDisponiveis || [1, 2, 3, 4, 5, 6]
+  );
+  const [horariosGrade, setHorariosGrade] = useState<string[]>(
+    configClinica.horariosDisponiveis || ['08:30', '09:45', '11:00', '13:30', '14:45', '16:00', '17:15', '18:30', '19:45']
+  );
+  const [novoHorarioInput, setNovoHorarioInput] = useState('');
+  const [geradorInicio, setGeradorInicio] = useState('08:30');
+  const [geradorFim, setGeradorFim] = useState('19:30');
+  const [geradorIntervalo, setGeradorIntervalo] = useState('75');
+
+  const diasSemanaNomes = [
+    { num: 0, nome: 'Dom', completo: 'Domingo' },
+    { num: 1, nome: 'Seg', completo: 'Segunda-feira' },
+    { num: 2, nome: 'Ter', completo: 'Terça-feira' },
+    { num: 3, nome: 'Qua', completo: 'Quarta-feira' },
+    { num: 4, nome: 'Qui', completo: 'Quinta-feira' },
+    { num: 5, nome: 'Sex', completo: 'Sexta-feira' },
+    { num: 6, nome: 'Sáb', completo: 'Sábado' },
+  ];
+
+  const toggleDia = (num: number) => {
+    if (diasAtendimento.includes(num)) {
+      if (diasAtendimento.length === 1) {
+        onShowToast('Atenção', 'Selecione ao menos 1 dia da semana para atendimento.', 'error');
+        return;
+      }
+      setDiasAtendimento(diasAtendimento.filter((d) => d !== num));
+    } else {
+      setDiasAtendimento([...diasAtendimento, num].sort());
+    }
+  };
+
+  const handleAdicionarHorario = () => {
+    if (!novoHorarioInput) return;
+    if (horariosGrade.includes(novoHorarioInput)) {
+      onShowToast('Aviso', 'Este horário já está cadastrado na grade.', 'info');
+      return;
+    }
+    const updated = [...horariosGrade, novoHorarioInput].sort();
+    setHorariosGrade(updated);
+    setNovoHorarioInput('');
+  };
+
+  const handleRemoverHorario = (hora: string) => {
+    if (horariosGrade.length === 1) {
+      onShowToast('Atenção', 'Mantenha ao menos 1 horário na grade.', 'error');
+      return;
+    }
+    setHorariosGrade(horariosGrade.filter((h) => h !== hora));
+  };
+
+  const handleGerarGradeAutomatica = () => {
+    const [hIni, mIni] = geradorInicio.split(':').map(Number);
+    const [hFim, mFim] = geradorFim.split(':').map(Number);
+    const intervalo = parseInt(geradorIntervalo, 10) || 75;
+
+    let minAtual = hIni * 60 + mIni;
+    const minFim = hFim * 60 + mFim;
+
+    const novos: string[] = [];
+    while (minAtual <= minFim) {
+      const h = Math.floor(minAtual / 60);
+      const m = minAtual % 60;
+      const hStr = h.toString().padStart(2, '0');
+      const mStr = m.toString().padStart(2, '0');
+      novos.push(`${hStr}:${mStr}`);
+      minAtual += intervalo;
+    }
+
+    if (novos.length > 0) {
+      setHorariosGrade(novos);
+      onShowToast('Grade Gerada!', `${novos.length} horários calculados automaticamente.`, 'success');
+    }
+  };
+
+  const handleSalvarDisponibilidade = () => {
+    const updatedClinica: ConfiguracaoClinica = {
+      ...configClinica,
+      diasSemanaDisponiveis: diasAtendimento,
+      horariosDisponiveis: horariosGrade,
+      intervaloMinutos: parseInt(geradorIntervalo, 10) || 75,
+    };
+
+    if (onSalvarClinica) {
+      onSalvarClinica(updatedClinica);
+    }
+    onShowToast('Disponibilidade Atualizada!', 'Seus dias e horários de atendimento foram salvos com sucesso.', 'success');
+    setModalDisponibilidade(false);
+  };
 
   // Helper para normalizar status de pagamento
   const getStatusPagamentoEfetivo = (ag: Agendamento): StatusPagamento => {
@@ -275,10 +374,21 @@ Estamos com seu horário reservado e preparando a sala com muito carinho. Qualqu
             <option value="pago_integral">🟢 Quitado (100%)</option>
           </select>
 
+          {/* Button Disponibilidade */}
+          <button
+            id="btn-ajustar-disponibilidade-agenda"
+            onClick={() => setModalDisponibilidade(true)}
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all touch-manipulation min-h-[38px] shrink-0 border border-slate-200 cursor-pointer"
+            title="Definir dias e horários de atendimento da terapeuta"
+          >
+            <Settings2 className="w-4 h-4 text-emerald-600" />
+            <span>Horários & Dias</span>
+          </button>
+
           {/* Button Novo Agendamento */}
           <button
             onClick={onOpenNovoAgendamento}
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all touch-manipulation min-h-[38px] shrink-0"
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all touch-manipulation min-h-[38px] shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Novo Horário</span>
@@ -495,6 +605,181 @@ Estamos com seu horário reservado e preparando a sala com muito carinho. Qualqu
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Modal de Configuração de Horários & Dias Disponíveis da Terapeuta */}
+      {modalDisponibilidade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-emerald-800 to-teal-800 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-white/10 rounded-xl">
+                  <Calendar className="w-5 h-5 text-emerald-300" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-200 font-mono">
+                    Grade de Atendimento
+                  </span>
+                  <h3 className="font-bold text-base">Ajustar Dias & Horários Disponíveis</h3>
+                </div>
+              </div>
+              <button
+                onClick={() => setModalDisponibilidade(false)}
+                className="text-white/80 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 sm:p-6 space-y-5 text-xs">
+              {/* 1. Dias da Semana */}
+              <div className="space-y-2">
+                <label className="font-bold text-slate-900 block text-xs flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                  1. Dias da Semana de Atendimento:
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  Selecione os dias em que a sua agenda online e interna estará aberta para marcação.
+                </p>
+                <div className="grid grid-cols-7 gap-1.5 pt-1">
+                  {diasSemanaNomes.map((d) => {
+                    const isAtivo = diasAtendimento.includes(d.num);
+                    return (
+                      <button
+                        key={d.num}
+                        type="button"
+                        onClick={() => toggleDia(d.num)}
+                        className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center transition-all cursor-pointer border ${
+                          isAtivo
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs ring-2 ring-emerald-500/20'
+                            : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'
+                        }`}
+                        title={d.completo}
+                      >
+                        <span className="text-[11px]">{d.nome}</span>
+                        {isAtivo && <Check className="w-3 h-3 mt-0.5" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. Grade de Horários Atuais */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-900 block text-xs">
+                    2. Horários Disponíveis no Dia ({horariosGrade.length} vagas):
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                  {horariosGrade.map((hora) => (
+                    <span
+                      key={hora}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-white rounded-lg border border-slate-200 text-xs font-mono font-bold text-slate-800 shadow-2xs group"
+                    >
+                      {hora}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoverHorario(hora)}
+                        className="text-slate-400 hover:text-rose-600 ml-0.5 cursor-pointer"
+                        title="Remover horário"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                {/* Adicionar horário avulso */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="time"
+                    value={novoHorarioInput}
+                    onChange={(e) => setNovoHorarioInput(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAdicionarHorario}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Adicionar Horário</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 3. Gerador Automático de Grade */}
+              <div className="p-3.5 bg-emerald-50/60 border border-emerald-200 rounded-2xl space-y-2.5">
+                <span className="font-bold text-emerald-950 block text-[11px] uppercase tracking-wider">
+                  ⚡ Gerador Rápido de Grade por Intervalo:
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <span className="text-[10px] font-semibold text-emerald-900 block mb-0.5">Início:</span>
+                    <input
+                      type="time"
+                      value={geradorInicio}
+                      onChange={(e) => setGeradorInicio(e.target.value)}
+                      className="w-full px-2 py-1.5 rounded-lg border border-emerald-300 text-xs font-mono bg-white text-center"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-semibold text-emerald-900 block mb-0.5">Término:</span>
+                    <input
+                      type="time"
+                      value={geradorFim}
+                      onChange={(e) => setGeradorFim(e.target.value)}
+                      className="w-full px-2 py-1.5 rounded-lg border border-emerald-300 text-xs font-mono bg-white text-center"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-semibold text-emerald-900 block mb-0.5">Intervalo:</span>
+                    <select
+                      value={geradorIntervalo}
+                      onChange={(e) => setGeradorIntervalo(e.target.value)}
+                      className="w-full px-1.5 py-1.5 rounded-lg border border-emerald-300 text-xs font-mono bg-white text-center"
+                    >
+                      <option value="45">45 min</option>
+                      <option value="60">60 min</option>
+                      <option value="75">75 min (Padrão)</option>
+                      <option value="90">90 min</option>
+                      <option value="120">120 min</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGerarGradeAutomatica}
+                  className="w-full py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-xs shadow-2xs transition-all cursor-pointer"
+                >
+                  Recalcular e Gerar Grade de Horários
+                </button>
+              </div>
+
+              {/* Actions Footer */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalDisponibilidade(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSalvarDisponibilidade}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Salvar Disponibilidade</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

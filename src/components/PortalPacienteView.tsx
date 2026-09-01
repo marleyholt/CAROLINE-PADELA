@@ -11,26 +11,30 @@ import {
   Copy,
   Check,
   Lock,
-  Phone,
-  MapPin,
   ShieldCheck,
-  UserCheck,
   ChevronRight,
+  ExternalLink,
+  RefreshCw,
 } from 'lucide-react';
 import {
   Agendamento,
   ConfiguracaoClinica,
-  ConfiguracaoInter,
+  ConfiguracaoInfinitePay,
   Procedimento,
 } from '../types';
-import { emitirCobrancaSinalBancoInter, InterCobrancaPixResult } from '../services/pixInter';
+import {
+  emitirCobrancaSinalInfinitePay,
+  criarCheckoutLinkInfinitePay,
+  InfinitePayCobrancaPixResult,
+} from '../services/infinitePay';
 import { abrirWhatsAppComTexto } from '../services/pdfGenerator';
 import { formatarDataBR } from '../utils/dateUtils';
 
 interface PortalPacienteViewProps {
   procedimentos: Procedimento[];
   configClinica: ConfiguracaoClinica;
-  configInter: ConfiguracaoInter;
+  configInter?: ConfiguracaoInfinitePay;
+  configInfinitePay?: ConfiguracaoInfinitePay;
   onAgendamentoCriado: (novoAgendamento: Agendamento, registrarSinalAgora: boolean) => Promise<void>;
   onOpenLoginTerapeuta?: () => void;
   onOpenCRM?: () => void;
@@ -46,12 +50,24 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
   procedimentos,
   configClinica,
   configInter,
+  configInfinitePay,
   onAgendamentoCriado,
   onOpenLoginTerapeuta,
   onOpenCRM,
   onVoltarHome,
   onShowToast,
 }) => {
+  const activeConfig: ConfiguracaoInfinitePay = configInfinitePay || configInter || {
+    chavePix: '5521975134597',
+    tipoChavePix: 'telefone',
+    nomeTitular: 'CAROLINE PADELA',
+    cidadeTitular: 'MARICA',
+    infiniteTag: 'carolpadela',
+    linkPagamento: 'https://infinitepay.io/$carolpadela',
+    ambiente: 'producao',
+    webhookAtivo: true,
+  };
+
   const handleOpenLogin = () => {
     if (onOpenLoginTerapeuta) {
       onOpenLoginTerapeuta();
@@ -59,6 +75,7 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
       onOpenCRM();
     }
   };
+
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [selectedProc, setSelectedProc] = useState<Procedimento | null>(
     procedimentos.filter((p) => p.ativo)[0] || procedimentos[0] || null
@@ -81,42 +98,132 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
   const [email, setEmail] = useState('');
   const [observacoes, setObservacoes] = useState('');
 
-  // Pagamento
-  const [metodoPagamento, setMetodoPagamento] = useState<'pix' | 'cartao'>('pix');
-  const [pixCobranca, setPixCobranca] = useState<InterCobrancaPixResult | null>(null);
+  // Pagamento InfinitePay
+  const [metodoPagamento, setMetodoPagamento] = useState<'checkout' | 'pix'>('checkout');
+  const [pixCobranca, setPixCobranca] = useState<InfinitePayCobrancaPixResult | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState<string>('');
   const [copiedPix, setCopiedPix] = useState(false);
   const [agendamentoFinal, setAgendamentoFinal] = useState<Agendamento | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [loadingCheckout, setLoadingCheckout] = useState(false);
 
-  // Cartão simulação
-  const [cartaoNumero, setCartaoNumero] = useState('');
-  const [cartaoNome, setCartaoNome] = useState('');
-  const [cartaoValidade, setCartaoValidade] = useState('');
-  const [cartaoCvv, setCartaoCvv] = useState('');
+  // Horários e Dias configurados pela terapeuta
+  const horariosDisponiveis = (configClinica.horariosDisponiveis && configClinica.horariosDisponiveis.length > 0)
+    ? configClinica.horariosDisponiveis
+    : HORARIOS_DISPONIVEIS;
 
-  // Ao entrar no Step 4 (Pagamento), gera Pix se método for Pix
+  const diasSemanaAtivos = configClinica.diasSemanaDisponiveis || [1, 2, 3, 4, 5, 6];
+
+  // Ao entrar no Step 4 (Pagamento), gera Pix (50% sinal) e Link de Checkout Cartão (100% integral) InfinitePay
   useEffect(() => {
-    if (step === 4 && selectedProc && metodoPagamento === 'pix') {
-      const valorSinal = selectedProc.valorSinal;
-      emitirCobrancaSinalBancoInter(valorSinal, nome || 'Paciente', selectedProc.nome, configInter).then((res) => {
-        setPixCobranca(res);
-      });
+    if (step === 4 && selectedProc) {
+      const valorSinalPix = selectedProc.valorSinal;
+      const valorIntegralCartao = selectedProc.precoTotal;
+      const orderNsu = `ag-${Date.now()}`;
+      setLoadingCheckout(true);
+
+      // 1. Gera dados Pix EMV Instantâneo InfinitePay para o Sinal de 50%
+      emitirCobrancaSinalInfinitePay(valorSinalPix, nome || 'Paciente', selectedProc.nome, activeConfig)
+        .then((res) => {
+          setPixCobranca(res);
+        })
+        .catch(console.warn);
+
+      // 2. Gera Link de Checkout Seguro InfinitePay para Cartão de Crédito com Valor Integral (100%)
+      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      const redirectTarget = activeConfig.redirectUrl || `${currentOrigin}${currentPath}`;
+      const finalRedirectUrl = `${redirectTarget}${redirectTarget.includes('?') ? '&' : '?'}order_nsu=${encodeURIComponent(orderNsu)}&status=retorno_infinitepay`;
+
+      criarCheckoutLinkInfinitePay({
+        handle: activeConfig.infiniteTag || 'carolpadela',
+        valor: valorIntegralCartao,
+        descricaoItem: `Pagamento Integral (Cartão de Crédito) - ${selectedProc.nome} (${nome || 'Paciente'})`,
+        orderNsu,
+        redirectUrl: finalRedirectUrl,
+        webhookUrl: activeConfig.webhookUrl,
+        cliente: {
+          nome: nome || 'Cliente',
+          email: email || undefined,
+          telefone: whatsapp || undefined,
+        },
+      })
+        .then((res) => {
+          setCheckoutUrl(res.checkoutUrl);
+        })
+        .catch(() => {
+          const fallbackTag = (activeConfig.infiniteTag || 'carolpadela').replace(/^\$/, '');
+          setCheckoutUrl(`https://infinitepay.io/$${fallbackTag}`);
+        })
+        .finally(() => {
+          setLoadingCheckout(false);
+        });
     }
-  }, [step, selectedProc, metodoPagamento, nome, configInter]);
+  }, [step, selectedProc, nome, email, whatsapp, activeConfig]);
 
   const handleCopyPix = () => {
     if (!pixCobranca?.pixCopiaECola) return;
-    navigator.clipboard.writeText(pixCobranca.pixCopiaECola);
+    navigator.clipboard.writeText(pixCobranca.pixCopiaECola.trim());
     setCopiedPix(true);
     onShowToast('Código Pix Copiado!', 'Abra o app do seu banco para colar e pagar.', 'success');
     setTimeout(() => setCopiedPix(false), 2500);
   };
 
-  const handleFinalizarAgendamento = async (pagoAgora: boolean) => {
+  const handleAbrirCheckoutInfinitePay = async () => {
     if (!selectedProc || salvando) return;
     setSalvando(true);
 
     try {
+      const fallbackTag = (activeConfig.infiniteTag || 'carolpadela').replace(/^\$/, '');
+      const url = checkoutUrl || `https://infinitepay.io/$${fallbackTag}`;
+      const orderNsu = `ag-${Date.now()}`;
+
+      // No Cartão de Crédito, o pagamento é INTEGRAL (100%)
+      const novo: Agendamento = {
+        id: orderNsu,
+        pacienteId: `pac-${Date.now()}`,
+        pacienteNome: nome || 'Cliente Web',
+        pacienteWhatsapp: whatsapp,
+        pacienteEmail: email,
+        procedimentoId: selectedProc.id,
+        procedimentoNome: selectedProc.nome,
+        data: selectedData,
+        horario: selectedHorario,
+        duracaoMinutos: selectedProc.duracaoMinutos,
+        valorTotal: selectedProc.precoTotal,
+        valorSinal: selectedProc.precoTotal,
+        valorRestante: 0,
+        status: 'aguardando_sinal',
+        statusPagamento: 'pago_integral',
+        metodoSinal: 'cartao_credito',
+        pixCopiaECola: undefined,
+        pixTxId: undefined,
+        checkoutUrl: url,
+        observacoes: observacoes || 'Agendado com Pagamento Integral no Cartão de Crédito via InfinitePay.',
+        criadoEm: new Date().toISOString(),
+      };
+
+      setAgendamentoFinal(novo);
+      await onAgendamentoCriado(novo, false);
+
+      // Abre checkout seguro da InfinitePay em nova aba
+      window.open(url, '_blank', 'noopener,noreferrer');
+      onShowToast('Ambiente Seguro InfinitePay Aberto!', 'Conclua o pagamento integral no cartão na aba aberta. Seu agendamento será confirmado!', 'info');
+      setStep(5);
+    } catch (err) {
+      console.error(err);
+      onShowToast('Erro ao Iniciar Checkout', 'Tente novamente ou use a opção Pix direto.', 'error');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const handleFinalizarAgendamentoPix = async (pagoAgora: boolean) => {
+    if (!selectedProc || salvando) return;
+    setSalvando(true);
+
+    try {
+      // No Pix, é cobrado o SINAL (50%) para fechar e garantir o horário
       const novo: Agendamento = {
         id: `ag-${Date.now()}`,
         pacienteId: `pac-${Date.now()}`,
@@ -133,11 +240,11 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
         valorRestante: selectedProc.precoTotal - selectedProc.valorSinal,
         status: pagoAgora ? 'sinal_pago' : 'aguardando_sinal',
         statusPagamento: pagoAgora ? 'pago_sinal' : 'a_pagar',
-        metodoSinal: metodoPagamento === 'pix' ? 'pix_inter' : 'cartao_credito',
+        metodoSinal: 'pix_infinitepay',
         pixCopiaECola: pixCobranca?.pixCopiaECola || '',
         pixTxId: pixCobranca?.txid || '',
         sinalPagoEm: pagoAgora ? new Date().toISOString() : undefined,
-        observacoes: observacoes || 'Agendado pelo portal público',
+        observacoes: observacoes || 'Agendado com Sinal 50% via Pix para fechamento de horário.',
         criadoEm: new Date().toISOString(),
       };
 
@@ -163,7 +270,7 @@ Acabei de reservar meu horário pelo portal online!
 
 💆‍♀️ *Procedimento:* ${agendamentoFinal.procedimentoNome}
 🗓️ *Data:* ${dataFormatada} às ${agendamentoFinal.horario}h
-💳 *Sinal 50%:* R$ ${agendamentoFinal.valorSinal.toFixed(2)} (${agendamentoFinal.status === 'sinal_pago' ? 'PAGO VIA BANCO INTER' : 'Pendente'})
+💳 *Sinal 50%:* R$ ${agendamentoFinal.valorSinal.toFixed(2)} (${agendamentoFinal.status === 'sinal_pago' ? 'PAGO VIA INFINITEPAY' : 'Processando'})
 
 Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
 
@@ -190,10 +297,10 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
           )}
           <div className="min-w-0">
             <h1 className="text-xs sm:text-sm font-bold text-white leading-tight truncate">
-              {configClinica.nomeClinica || 'Espaço Terapêutico'}
+              {configClinica.nomeClinica || 'Estúdio Caroline Padela'}
             </h1>
             <p className="text-[10px] text-slate-400 truncate">
-              {configClinica.nomeTerapeuta} • {configClinica.especialidade}
+              {configClinica.nomeTerapeuta || 'Caroline Padela'} • {configClinica.especialidade || 'Liberação Miofascial & Massoterapia'}
             </p>
           </div>
         </div>
@@ -221,7 +328,7 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
             title="Acessar o painel de gestão do consultório"
           >
             <Lock className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">Acesso CRM</span>
+            <span className="hidden sm:inline">Área da Terapeuta</span>
             <span className="sm:hidden">Entrar</span>
           </button>
         </div>
@@ -238,12 +345,12 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
                   Agendamento Online Instantâneo
                 </span>
                 <h2 className="text-sm sm:text-base font-bold text-white mt-0.5">
-                  Reserve seu Horário com Garantia (50% Inter)
+                  Reserve seu Horário com Garantia (50% InfinitePay)
                 </h2>
               </div>
               <div className="text-right hidden sm:block shrink-0">
-                <span className="text-[10px] text-slate-400 block font-mono">Consultório:</span>
-                <span className="text-xs text-slate-300 font-medium">{configClinica.cidadeUf || 'São Paulo - SP'}</span>
+                <span className="text-[10px] text-slate-400 block font-mono">Espaço:</span>
+                <span className="text-xs text-slate-300 font-medium">{configClinica.cidadeUf || 'Maricá - RJ'}</span>
               </div>
             </div>
 
@@ -403,15 +510,15 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
 
                 {/* Horários Grid */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700 block">Horários Disponíveis</label>
+                  <label className="text-xs font-semibold text-slate-700 block">Horários Disponíveis da Terapeuta</label>
                   <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                    {HORARIOS_DISPONIVEIS.map((hr) => {
+                    {horariosDisponiveis.map((hr) => {
                       const isHrSelected = selectedHorario === hr;
                       return (
                         <button
                           key={hr}
                           onClick={() => setSelectedHorario(hr)}
-                          className={`py-2.5 px-2 rounded-xl text-xs sm:text-sm font-bold border font-mono transition-all min-h-[44px] touch-manipulation flex items-center justify-center ${
+                          className={`py-2.5 px-2 rounded-xl text-xs sm:text-sm font-bold border font-mono transition-all min-h-[44px] touch-manipulation flex items-center justify-center cursor-pointer ${
                             isHrSelected
                               ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs scale-102'
                               : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-300 active:bg-slate-50'
@@ -483,7 +590,7 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
                       <input
                         type="tel"
                         required
-                        placeholder="Ex: (11) 98765-4321"
+                        placeholder="Ex: (21) 97513-4597"
                         value={whatsapp}
                         onChange={(e) => setWhatsapp(e.target.value)}
                         className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-base sm:text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[46px]"
@@ -523,13 +630,13 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
                   onClick={() => setStep(4)}
                   className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all flex items-center justify-center gap-2 min-h-[48px] touch-manipulation cursor-pointer"
                 >
-                  <span>Ir para Garantia de Horário (50% Inter)</span>
+                  <span>Ir para Garantia de Horário (50% InfinitePay)</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             )}
 
-            {/* STEP 4: PAGAMENTO 50% BANCO INTER */}
+            {/* STEP 4: PAGAMENTO 50% INFINITEPAY */}
             {step === 4 && selectedProc && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -537,7 +644,7 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
                     <h3 className="text-xs sm:text-sm font-bold text-slate-850 uppercase tracking-wider">
                       Garantia de Horário - Sinal 50%
                     </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">Cobrança instantânea gerada via Banco Inter</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Pagamento seguro processado via InfinitePay</p>
                   </div>
                   <button
                     onClick={() => setStep(3)}
@@ -547,19 +654,22 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
                   </button>
                 </div>
 
-                {/* Price Breakdown */}
+                {/* Price Breakdown Dinâmico Conforme Forma de Pagamento */}
                 <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-3 sm:p-4 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <span className="text-xs sm:text-sm text-emerald-950 font-bold block truncate">{selectedProc.nome}</span>
                     <span className="text-[11px] text-slate-600 font-mono block mt-0.5">
-                      Total: R$ {selectedProc.precoTotal.toFixed(2)} (Restante: R${' '}
-                      {(selectedProc.precoTotal - selectedProc.valorSinal).toFixed(2)} no dia)
+                      {metodoPagamento === 'checkout'
+                        ? 'Pagamento Integral (100% no Cartão de Crédito - sem cobrança no dia)'
+                        : `Valor Total: R$ ${selectedProc.precoTotal.toFixed(2)} (Restante: R$ ${(selectedProc.precoTotal - selectedProc.valorSinal).toFixed(2)} no dia da sessão)`}
                     </span>
                   </div>
                   <div className="text-right shrink-0">
-                    <span className="text-[9px] uppercase font-bold text-emerald-800 block">Sinal 50%</span>
+                    <span className="text-[9px] uppercase font-bold text-emerald-800 block">
+                      {metodoPagamento === 'checkout' ? 'Valor Integral (Cartão)' : 'Sinal de Reserva (Pix)'}
+                    </span>
                     <span className="text-base sm:text-lg font-bold font-mono text-emerald-700">
-                      R$ {selectedProc.valorSinal.toFixed(2)}
+                      R$ {metodoPagamento === 'checkout' ? selectedProc.precoTotal.toFixed(2) : selectedProc.valorSinal.toFixed(2)}
                     </span>
                   </div>
                 </div>
@@ -567,41 +677,86 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
                 {/* Method Switcher */}
                 <div className="grid grid-cols-2 gap-2">
                   <button
+                    onClick={() => setMetodoPagamento('checkout')}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all touch-manipulation min-h-[44px] cursor-pointer ${
+                      metodoPagamento === 'checkout'
+                        ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    <span>Cartão de Crédito (Integral)</span>
+                  </button>
+
+                  <button
                     onClick={() => setMetodoPagamento('pix')}
-                    className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all touch-manipulation min-h-[44px] ${
+                    className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all touch-manipulation min-h-[44px] cursor-pointer ${
                       metodoPagamento === 'pix'
                         ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
                     <QrCode className="w-4 h-4" />
-                    <span>Pix Inter</span>
-                  </button>
-
-                  <button
-                    onClick={() => setMetodoPagamento('cartao')}
-                    className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all touch-manipulation min-h-[44px] ${
-                      metodoPagamento === 'cartao'
-                        ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    <CreditCard className="w-4 h-4" />
-                    <span>Cartão de Crédito</span>
+                    <span>Pix (Sinal 50%)</span>
                   </button>
                 </div>
 
-                {metodoPagamento === 'pix' ? (
+                {/* OPÇÃO 1: CARTÃO / CHECKOUT SEGURO OFICIAL INFINITEPAY */}
+                {metodoPagamento === 'checkout' ? (
+                  <div className="space-y-3.5 bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold font-mono">
+                      <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                      <span>Ambiente Criptografado Oficial InfinitePay</span>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 text-left space-y-2">
+                      <div className="flex items-center gap-2 text-slate-800 font-semibold text-xs">
+                        <CreditCard className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>Pague com Cartão de Crédito (em até 12x) de forma Integral</span>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        No cartão de crédito, o pagamento é processado de <strong>forma integral (100%)</strong> no ambiente seguro da <strong>InfinitePay</strong>, garantindo sua vaga sem precisar pagar nada no dia do atendimento.
+                      </p>
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                        <span>Estabelecimento: <strong>{activeConfig.nomeTitular || 'CAROLINE PADELA'}</strong></span>
+                        <span className="text-emerald-700 font-bold">InfiniteTag: ${activeConfig.infiniteTag || 'carolpadela'}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      disabled={salvando || loadingCheckout}
+                      onClick={handleAbrirCheckoutInfinitePay}
+                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-emerald-700/20 transition-all flex items-center justify-center gap-2 min-h-[50px] touch-manipulation cursor-pointer disabled:opacity-50"
+                    >
+                      {salvando ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Abrindo InfinitePay...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ExternalLink className="w-4 h-4" />
+                          <span>Pagar R$ {selectedProc.precoTotal.toFixed(2)} (Integral no Cartão)</span>
+                        </>
+                      )}
+                    </button>
+
+                    <p className="text-[11px] text-slate-400">
+                      Ao concluir o pagamento na InfinitePay, seu horário será garantido e confirmado automaticamente.
+                    </p>
+                  </div>
+                ) : (
+                  /* OPÇÃO 2: PIX QR CODE DIRETO */
                   <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-center">
                     <span className="text-[10px] font-bold uppercase text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-mono inline-block">
-                      Aprovação Instantânea • Banco Inter
+                      Aprovação Instantânea • Pix InfinitePay
                     </span>
 
                     {pixCobranca?.qrCodeDataUrl && (
                       <div className="inline-block p-2 bg-white rounded-xl border border-slate-200 shadow-xs my-1">
                         <img
                           src={pixCobranca.qrCodeDataUrl}
-                          alt="QR Code Pix"
+                          alt="QR Code Pix InfinitePay"
                           className="w-36 h-36 mx-auto rounded-lg object-contain"
                         />
                       </div>
@@ -610,12 +765,17 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
                     <div className="text-left bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between">
                       <div>
                         <span className="text-[9px] uppercase font-bold text-slate-400 block font-mono">
-                          Chave Pix da Clínica
+                          Titular / Chave Pix
                         </span>
                         <span className="text-xs font-mono font-semibold text-slate-800">
-                          {configInter.chavePix}
+                          {activeConfig.nomeTitular || 'CAROLINE PADELA'} ({activeConfig.chavePix})
                         </span>
                       </div>
+                      {activeConfig.infiniteTag && (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded font-mono">
+                          ${activeConfig.infiniteTag}
+                        </span>
+                      )}
                     </div>
 
                     <div className="space-y-1.5 text-left">
@@ -640,73 +800,13 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
                     <div className="pt-1">
                       <button
                         disabled={salvando}
-                        onClick={() => handleFinalizarAgendamento(true)}
+                        onClick={() => handleFinalizarAgendamentoPix(true)}
                         className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all flex items-center justify-center gap-2 min-h-[48px] touch-manipulation cursor-pointer disabled:opacity-50"
                       >
                         <CheckCircle2 className="w-4 h-4" />
-                        <span>{salvando ? 'Confirmando...' : 'Já Paguei o Pix / Confirmar Agendamento'}</span>
+                        <span>{salvando ? 'Confirmando...' : 'Já Paguei o Pix / Confirmar Horário'}</span>
                       </button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-3.5">
-                    <div className="space-y-2.5">
-                      <div>
-                        <label className="text-xs font-semibold text-slate-700 block mb-1">
-                          Número do Cartão
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="0000 0000 0000 0000"
-                          value={cartaoNumero}
-                          onChange={(e) => setCartaoNumero(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-base sm:text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono min-h-[44px]"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-semibold text-slate-700 block mb-1">
-                          Nome no Cartão
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Como impresso no cartão"
-                          value={cartaoNome}
-                          onChange={(e) => setCartaoNome(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-base sm:text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[44px]"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <div>
-                          <label className="text-xs font-semibold text-slate-700 block mb-1">Validade</label>
-                          <input
-                            type="text"
-                            placeholder="MM/AA"
-                            value={cartaoValidade}
-                            onChange={(e) => setCartaoValidade(e.target.value)}
-                            className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-base sm:text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono min-h-[44px]"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-slate-700 block mb-1">CVV</label>
-                          <input
-                            type="text"
-                            placeholder="123"
-                            value={cartaoCvv}
-                            onChange={(e) => setCartaoCvv(e.target.value)}
-                            className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-base sm:text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono min-h-[44px]"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      disabled={salvando}
-                      onClick={() => handleFinalizarAgendamento(true)}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all flex items-center justify-center gap-2 min-h-[48px] touch-manipulation cursor-pointer disabled:opacity-50"
-                    >
-                      <CreditCard className="w-4 h-4" />
-                      <span>{salvando ? 'Processando...' : `Pagar R$ ${selectedProc.valorSinal.toFixed(2)} no Cartão`}</span>
-                    </button>
                   </div>
                 )}
               </div>
@@ -721,10 +821,12 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
 
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-slate-900 uppercase tracking-wider">
-                    Agendamento Confirmado com Sucesso!
+                    {agendamentoFinal.status === 'sinal_pago' ? 'Agendamento Confirmado com Sucesso!' : 'Solicitação de Agendamento Enviada!'}
                   </h3>
                   <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                    Recebemos seu agendamento e o sinal de 50% com garantia de reserva na agenda.
+                    {agendamentoFinal.status === 'sinal_pago'
+                      ? 'Recebemos seu sinal de 50% via InfinitePay com garantia de reserva imediata.'
+                      : 'Conclua o pagamento na InfinitePay ou envie o comprovante pelo WhatsApp para confirmar seu horário.'}
                   </p>
                 </div>
 
@@ -745,9 +847,9 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
                     <span className="font-semibold text-slate-800">{agendamentoFinal.pacienteNome}</span>
                   </div>
                   <div className="flex justify-between border-b border-slate-200 pb-1.5">
-                    <span className="text-slate-500">Sinal 50% (Pago):</span>
+                    <span className="text-slate-500">Sinal 50%:</span>
                     <span className="font-bold font-mono text-emerald-700">
-                      R$ {agendamentoFinal.valorSinal.toFixed(2)}
+                      R$ {agendamentoFinal.valorSinal.toFixed(2)} ({agendamentoFinal.status === 'sinal_pago' ? 'PAGO' : 'Pendente'})
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -764,7 +866,7 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
                     className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all flex items-center justify-center gap-2 min-h-[48px] touch-manipulation cursor-pointer"
                   >
                     <Send className="w-4 h-4" />
-                    <span>Enviar Confirmação no WhatsApp da Clínica</span>
+                    <span>Enviar Confirmação no WhatsApp da Terapeuta</span>
                   </button>
 
                   <button
@@ -774,6 +876,7 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
                       setWhatsapp('');
                       setEmail('');
                       setObservacoes('');
+                      setAgendamentoFinal(null);
                     }}
                     className="w-full py-2.5 text-slate-600 hover:text-slate-800 text-xs font-semibold cursor-pointer min-h-[40px]"
                   >

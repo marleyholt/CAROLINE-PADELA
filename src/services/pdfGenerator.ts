@@ -385,7 +385,32 @@ export function gerarRelatorioEvolucaoPDFNodes(
   doc.setFont('helvetica', 'normal');
   doc.text(paciente.nome, margin + 17, y);
 
-  y += 9;
+  // Dados Físicos Opcionais da Anamnese (Peso, Altura, Idade) - Só aparecem no relatório se preenchidos
+  const dadosFisicos: string[] = [];
+  if (paciente.idade && paciente.idade.toString().trim() !== '') {
+    const idStr = paciente.idade.toString().trim();
+    dadosFisicos.push(`Idade: ${idStr.toLowerCase().includes('ano') ? idStr : `${idStr} anos`}`);
+  }
+  if (paciente.peso && paciente.peso.toString().trim() !== '') {
+    const pStr = paciente.peso.toString().trim();
+    dadosFisicos.push(`Peso: ${pStr.toLowerCase().includes('kg') ? pStr : `${pStr} kg`}`);
+  }
+  if (paciente.altura && paciente.altura.toString().trim() !== '') {
+    const aStr = paciente.altura.toString().trim();
+    dadosFisicos.push(`Altura: ${aStr.toLowerCase().includes('m') || aStr.toLowerCase().includes('cm') ? aStr : `${aStr} m`}`);
+  }
+
+  if (dadosFisicos.length > 0) {
+    y += 5.2;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(60, 70, 65);
+    doc.text(`Dados Físicos: `, margin, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(dadosFisicos.join('   |   '), margin + 23, y);
+  }
+
+  y += 8;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(15, 20, 18);
@@ -515,11 +540,36 @@ export function gerarRelatorioDesenvolvimentoGeralPDF(
   doc.text(paciente.nome, margin + 17, y);
 
   doc.setFont('helvetica', 'bold');
-  doc.text(`Total de Sessões Registradas: `, margin + 95, y);
+  doc.text(`Total de Sessões: `, margin + 95, y);
   doc.setFont('helvetica', 'normal');
-  doc.text(`${evolucoes.length} sessão(ões)`, margin + 145, y);
+  doc.text(`${evolucoes.length} sessão(ões)`, margin + 128, y);
 
-  y += 9;
+  // Dados Físicos Opcionais da Anamnese (Peso, Altura, Idade) - Só aparecem se preenchidos
+  const dadosFisicosGeral: string[] = [];
+  if (paciente.idade && paciente.idade.toString().trim() !== '') {
+    const idStr = paciente.idade.toString().trim();
+    dadosFisicosGeral.push(`Idade: ${idStr.toLowerCase().includes('ano') ? idStr : `${idStr} anos`}`);
+  }
+  if (paciente.peso && paciente.peso.toString().trim() !== '') {
+    const pStr = paciente.peso.toString().trim();
+    dadosFisicosGeral.push(`Peso: ${pStr.toLowerCase().includes('kg') ? pStr : `${pStr} kg`}`);
+  }
+  if (paciente.altura && paciente.altura.toString().trim() !== '') {
+    const aStr = paciente.altura.toString().trim();
+    dadosFisicosGeral.push(`Altura: ${aStr.toLowerCase().includes('m') || aStr.toLowerCase().includes('cm') ? aStr : `${aStr} m`}`);
+  }
+
+  if (dadosFisicosGeral.length > 0) {
+    y += 5.2;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(60, 70, 65);
+    doc.text(`Dados Físicos: `, margin, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(dadosFisicosGeral.join('   |   '), margin + 23, y);
+  }
+
+  y += 8;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(15, 20, 18);

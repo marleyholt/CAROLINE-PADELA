@@ -4,6 +4,8 @@ export interface Procedimento {
   id: string;
   nome: string;
   categoria: ProcedimentoCategoria;
+  tipo?: 'avulso' | 'pacote'; // Define se é sessão avulsa ou pacote
+  quantidadeSessoes?: number; // Qtd de sessões caso seja pacote (ex: 8)
   duracaoMinutos: number;
   precoTotal: number;
   sinalPercentual: number; // default 50%
@@ -46,6 +48,12 @@ export interface Agendamento {
   pixTxId?: string;
   sinalPagoEm?: string;
   restantePagoEm?: string;
+  // InfinitePay Checkout & Redirect info
+  checkoutUrl?: string;
+  slugPagamento?: string;
+  transactionNsu?: string;
+  receiptUrl?: string;
+  captureMethod?: string;
   googleEventId?: string;
   googleCalendarSynced?: boolean;
   observacoes?: string;
@@ -104,6 +112,9 @@ export interface Paciente {
   endereco?: string;
   
   // Anamnese
+  peso?: string; // Massa corporal (ex: "68 kg" ou "68") - Opcional
+  altura?: string; // Altura (ex: "1.72 m" ou "172 cm") - Opcional
+  idade?: string | number; // Idade (ex: "34" ou 34) - Opcional
   queixaInicial: string;
   historicoMedico: string; // Cirurgias, fraturas, patologias
   medicacoesUso: string;
@@ -192,6 +203,10 @@ export interface ConfiguracaoClinica {
   assinaturaBgColor?: string; // Cor de fundo extraída/definida para o rodapé do PDF (Ex: #EDF1EB)
   textoMarcaDagua: string;
   mensagemWhatsappPadrao: string;
+  // Disponibilidade e Grade de Atendimento do Terapeuta
+  diasSemanaDisponiveis?: number[]; // [0, 1, 2, 3, 4, 5, 6] onde 0=Dom, 1=Seg, ..., 6=Sáb
+  horariosDisponiveis?: string[]; // Ex: ['08:30', '09:45', '11:00', '13:30', '14:45', '16:00', '17:15', '18:30', '19:45']
+  intervaloMinutos?: number; // Ex: 75 minutos por atendimento
 }
 
 export interface ConfiguracaoInfinitePay {
@@ -199,8 +214,10 @@ export interface ConfiguracaoInfinitePay {
   tipoChavePix: 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria';
   nomeTitular: string;
   cidadeTitular: string;
-  infiniteTag: string; // Ex: $carolpadela ou link InfinitePay
+  infiniteTag: string; // Ex: carolpadela ou $carolpadela
   linkPagamento: string; // Link direto de cobrança
+  webhookUrl?: string; // URL do webhook no servidor Laravel (ex: https://meuservidor.com.br/api/infinitepay/webhook)
+  redirectUrl?: string; // URL de retorno após pagamento
   apiKey: string;
   ambiente: 'producao' | 'sandbox';
   webhookAtivo: boolean;
