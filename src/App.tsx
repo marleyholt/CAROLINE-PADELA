@@ -905,7 +905,15 @@ export default function App() {
       }
     }
 
-    await deleteAgendamentoFirestore(id);
+    // Atualiza imediatamente o estado local e localStorage
+    const listaAtualizada = agendamentos.filter((a) => a.id !== id);
+    setAgendamentos(listaAtualizada);
+    StorageService.saveAgendamentos(listaAtualizada);
+
+    // Remove do Firestore se estiver conectado
+    if (firebaseUser) {
+      await deleteAgendamentoFirestore(id);
+    }
 
     // Se houver evolução pendente criada para este agendamento, remove também
     const evoPendente = evolucoes.find((e) => e.agendamentoId === id || e.id === `evo-ag-${id}`);
@@ -913,10 +921,12 @@ export default function App() {
       const listaEvos = evolucoes.filter((e) => e.id !== evoPendente.id);
       setEvolucoes(listaEvos);
       StorageService.saveEvolucoes(listaEvos);
-      await deleteEvolucaoFirestore(evoPendente.id);
+      if (firebaseUser) {
+        await deleteEvolucaoFirestore(evoPendente.id);
+      }
     }
 
-    showToast('Agendamento Removido', '', 'info');
+    showToast('Agendamento Removido com Sucesso', 'O horário foi liberado na agenda.', 'info');
   };
 
   // Handlers: Pacientes & Evoluções

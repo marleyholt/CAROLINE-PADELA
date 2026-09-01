@@ -104,7 +104,8 @@ export async function gerarQRCodeDataUrl(payloadPix: string): Promise<string> {
 }
 
 export interface InfinitePayCheckoutParams {
-  handle: string; // Ex: carolpadela (sem $)
+  handle: string; // Ex: caroline-padela (sem $)
+  linkPagamento?: string; // Link direto do app InfinitePay configurado pela terapeuta
   valor: number; // Em reais, ex: 80.00
   descricaoItem: string;
   orderNsu: string; // ID do agendamento
@@ -134,6 +135,17 @@ export interface InfinitePayRetornoParams {
   status?: string;
 }
 
+export function obterLinkPagamentoPublicoInfinitePay(handleOuLink?: string): string {
+  if (!handleOuLink) return 'https://link.infinitepay.io/caroline-padela';
+  const trimmed = handleOuLink.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    // Se o usuário colou com /$, ou link da InfinitePay, retorna o link limpo
+    return trimmed.replace('infinitepay.io/$', 'link.infinitepay.io/');
+  }
+  const cleanHandle = trimmed.replace(/^\$/, '').trim();
+  return `https://link.infinitepay.io/${cleanHandle}`;
+}
+
 /**
  * Cria um link de Checkout Externo oficial da InfinitePay
  * Documentação: https://app.infinitepay.io/external-checkout#documentacao
@@ -141,7 +153,7 @@ export interface InfinitePayRetornoParams {
 export async function criarCheckoutLinkInfinitePay(
   params: InfinitePayCheckoutParams
 ): Promise<InfinitePayCheckoutResult> {
-  const cleanHandle = (params.handle || 'carolpadela').replace(/^\$/, '').trim();
+  const cleanHandle = (params.handle || 'caroline-padela').replace(/^\$/, '').trim();
   const valorCentavos = Math.round(params.valor * 100);
 
   // Determina a URL de retorno dinamicamente se não informada
@@ -152,7 +164,7 @@ export async function criarCheckoutLinkInfinitePay(
     returnUrl = `${origin}${pathname}?order_nsu=${encodeURIComponent(params.orderNsu)}&status=retorno_infinitepay`;
   }
 
-  // Prepara o payload oficial
+  // Prepara o payload oficial para API da InfinitePay
   const payload: any = {
     handle: cleanHandle,
     items: [
@@ -193,29 +205,32 @@ export async function criarCheckoutLinkInfinitePay(
 
     if (response.ok) {
       const data = await response.json();
-      const checkoutUrl = data.url || data.checkout_url || data.link || `https://checkout.infinitepay.io/pay/${data.slug}`;
-      return {
-        sucesso: true,
-        checkoutUrl,
-        slug: data.slug,
-        orderNsu: params.orderNsu,
-      };
+      const checkoutUrl = data.url || data.checkout_url || data.link || (data.slug ? `https://checkout.infinitepay.io/pay/${data.slug}` : '');
+      if (checkoutUrl) {
+        return {
+          sucesso: true,
+          checkoutUrl,
+          slug: data.slug,
+          orderNsu: params.orderNsu,
+        };
+      }
     } else {
       console.warn('API InfinitePay retornou status:', response.status, 'usando fallback.');
     }
   } catch (err) {
-    console.warn('Falha na requisição direta API InfinitePay (esperado em clientes sem proxy ou offline):', err);
+    console.warn('Falha na requisição direta API InfinitePay:', err);
   }
 
-  // Fallback garantido: Link direto InfiniteTag com valor formatado
-  const tagFormatada = cleanHandle.startsWith('$') ? cleanHandle : `$${cleanHandle}`;
-  const fallbackUrl = `https://infinitepay.io/${tagFormatada}`;
+  // Fallback garantido: Link personalizado configurado pela terapeuta ou link padrão
+  const fallbackUrl = params.linkPagamento && params.linkPagamento.startsWith('http')
+    ? params.linkPagamento
+    : obterLinkPagamentoPublicoInfinitePay(params.linkPagamento || cleanHandle);
 
   return {
     sucesso: true,
     checkoutUrl: fallbackUrl,
     orderNsu: params.orderNsu,
-    mensagem: 'Link direto InfinitePay gerado.',
+    mensagem: 'Link de pagamento InfinitePay pronto.',
   };
 }
 
@@ -344,13 +359,14 @@ export async function emitirCobrancaSinalInfinitePay(
   // Data expiração (30 min)
   const expira = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
-  // Gera link do InfiniteTag ou link de pagamento direto
+  // Gera link do InfiniteTag ou link de pagamento direto oficial
   let linkFinal = configInfinitePay.linkPagamento;
   if (!linkFinal && configInfinitePay.infiniteTag) {
-    const tag = configInfinitePay.infiniteTag.startsWith('$')
-      ? configInfinitePay.infiniteTag
-      : `$${configInfinitePay.infiniteTag}`;
-    linkFinal = `https://infinitepay.io/${tag}`;
+    linkFinal = obterLinkPagamentoPublicoInfinitePay(configInfinitePay.infiniteTag);
+  } else if (linkFinal) {
+    linkFinal = obterLinkPagamentoPublicoInfinitePay(linkFinal);
+  } else {
+    linkFinal = 'https://infinitepay.io/pay/caroline-padela';
   }
 
   return {

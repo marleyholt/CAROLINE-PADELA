@@ -21,6 +21,8 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
+  Camera,
+  ImageIcon,
 } from 'lucide-react';
 import {
   ConfiguracaoClinica,
@@ -30,10 +32,11 @@ import {
 } from '../types';
 import {
   baixarRelatorioPDF,
-  baixarRelatorioDesenvolvimentoPDF,
   gerarTextoWhatsAppEvolucao,
   abrirWhatsAppComTexto,
+  enviarRelatorioAtendimentoWhatsAppComPDF,
 } from '../services/pdfGenerator';
+import { RelatorioDesenvolvimentoModal } from './RelatorioDesenvolvimentoModal';
 
 interface PacientesCRMViewProps {
   pacientes: Paciente[];
@@ -69,6 +72,7 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
   const [busca, setBusca] = useState('');
   const [selectedPacienteId, setSelectedPacienteId] = useState<string>(pacientes[0]?.id || '');
   const [modalNovoPaciente, setModalNovoPaciente] = useState(false);
+  const [modalRelatorioDesenvolvimento, setModalRelatorioDesenvolvimento] = useState(false);
   const [editandoPaciente, setEditandoPaciente] = useState<Paciente | null>(null);
   const [pacienteParaExcluir, setPacienteParaExcluir] = useState<Paciente | null>(null);
 
@@ -224,9 +228,7 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
 
   const handleEnviarWhatsApp = (evo: EvolucaoClinica) => {
     if (!selectedPaciente) return;
-    const msg = gerarTextoWhatsAppEvolucao(evo, selectedPaciente, configClinica);
-    abrirWhatsAppComTexto(selectedPaciente.whatsapp, msg);
-    onShowToast('WhatsApp Aberto', 'Mensagem da sessão formatada com sucesso.', 'info');
+    enviarRelatorioAtendimentoWhatsAppComPDF(evo, selectedPaciente, configClinica, onShowToast);
   };
 
   return (
@@ -358,12 +360,9 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                   {pacienteEvolucoes.length > 0 && (
                     <button
                       id="btn-relatorio-desenvolvimento-paciente"
-                      onClick={() => {
-                        baixarRelatorioDesenvolvimentoPDF(selectedPaciente, pacienteEvolucoes, configClinica);
-                        onShowToast('Relatório Gerado', 'Relatório Geral de Desenvolvimento baixado em PDF com sucesso!', 'success');
-                      }}
+                      onClick={() => setModalRelatorioDesenvolvimento(true)}
                       className="p-1.5 px-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-md border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                      title="Gerar Relatório Geral de Desenvolvimento com marca d'água oficial"
+                      title="Personalizar e Gerar Relatório Geral de Desenvolvimento com evolução e fotos em PDF"
                     >
                       <Download className="w-3 h-3 text-emerald-400" />
                       <span>Relatório de Desenvolvimento (PDF)</span>
@@ -689,6 +688,63 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                               <p className="text-emerald-800 whitespace-pre-line">{evo.orientacoesCasa}</p>
                             </div>
                           )}
+
+                          {/* Comparativos Visuais (Fotos Antes e Depois) da Sessão */}
+                          {evo.comparativosVisuais && evo.comparativosVisuais.length > 0 && (
+                            <div className="space-y-2 pt-1 border-t border-slate-100">
+                              <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                                <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                                Comparativo Visual da Sessão ({evo.comparativosVisuais.length} par{evo.comparativosVisuais.length > 1 ? 'es' : ''}):
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                {evo.comparativosVisuais.map((comp, cIdx) => (
+                                  <div
+                                    key={comp.id || cIdx}
+                                    className="bg-slate-50 p-2 rounded-lg border border-slate-200 space-y-1.5"
+                                  >
+                                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-600">
+                                      <span>Par #{cIdx + 1}</span>
+                                      {comp.descricao && (
+                                        <span className="text-slate-400 font-normal italic truncate max-w-[150px]">
+                                          {comp.descricao}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div className="relative rounded-lg overflow-hidden border border-slate-200 bg-slate-950 aspect-[3/4] min-h-[180px] sm:min-h-[240px] flex items-center justify-center p-1">
+                                        {comp.fotoAntes ? (
+                                          <img
+                                            src={comp.fotoAntes}
+                                            alt="Antes"
+                                            className="w-full h-full object-contain"
+                                          />
+                                        ) : (
+                                          <span className="text-[9px] text-slate-400">Sem foto</span>
+                                        )}
+                                        <span className="absolute top-1.5 left-1.5 bg-rose-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs">
+                                          ANTES
+                                        </span>
+                                      </div>
+                                      <div className="relative rounded-lg overflow-hidden border border-slate-200 bg-slate-950 aspect-[3/4] min-h-[180px] sm:min-h-[240px] flex items-center justify-center p-1">
+                                        {comp.fotoDepois ? (
+                                          <img
+                                            src={comp.fotoDepois}
+                                            alt="Depois"
+                                            className="w-full h-full object-contain"
+                                          />
+                                        ) : (
+                                          <span className="text-[9px] text-slate-400">Sem foto</span>
+                                        )}
+                                        <span className="absolute top-1.5 left-1.5 bg-emerald-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs">
+                                          DEPOIS
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* Actions bar: Export PDF, WhatsApp, Edit */}
@@ -708,10 +764,10 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
                               id={`btn-whats-evo-${evo.id}`}
                               onClick={() => handleEnviarWhatsApp(evo)}
                               className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
-                              title="Enviar resumo clínico no WhatsApp do paciente"
+                              title="Enviar relatório em PDF com resumo no WhatsApp do paciente"
                             >
                               <Send className="w-3.5 h-3.5" />
-                              <span>Enviar via WhatsApp</span>
+                              <span>Enviar WhatsApp com PDF</span>
                             </button>
                           </div>
 
@@ -1005,6 +1061,17 @@ export const PacientesCRMView: React.FC<PacientesCRMViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Personalização & Emissão do Relatório de Desenvolvimento */}
+      {modalRelatorioDesenvolvimento && selectedPaciente && (
+        <RelatorioDesenvolvimentoModal
+          paciente={selectedPaciente}
+          evolucoes={pacienteEvolucoes}
+          configClinica={configClinica}
+          onClose={() => setModalRelatorioDesenvolvimento(false)}
+          onShowToast={onShowToast}
+        />
       )}
     </div>
   );

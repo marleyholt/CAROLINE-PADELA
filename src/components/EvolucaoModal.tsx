@@ -4,25 +4,29 @@ import {
   FileText,
   Download,
   Send,
-  Sparkles,
-  DollarSign,
   Activity,
   HeartPulse,
   Calendar,
-  CreditCard,
   CheckCircle2,
   Clock,
+  Camera,
+  Plus,
+  Trash2,
+  ImageIcon,
+  UploadCloud,
 } from 'lucide-react';
 import {
   ConfiguracaoClinica,
   EvolucaoClinica,
   Paciente,
   Procedimento,
+  ComparativoVisual,
 } from '../types';
 import {
   baixarRelatorioPDF,
   gerarTextoWhatsAppEvolucao,
   abrirWhatsAppComTexto,
+  enviarRelatorioAtendimentoWhatsAppComPDF,
 } from '../services/pdfGenerator';
 
 interface EvolucaoModalProps {
@@ -53,36 +57,48 @@ const DEFAULT_REGIOES = [
   'Crânio / Face / ATM',
 ];
 
-const TEMPLATES_EVOLUCAO = [
-  {
-    nome: 'Liberação Miofascial & Dor Lombar/Cervical',
-    queixa: 'Dor miofascial localizada com presença de bandas tensas, pontos-gatilho ativos e redução da amplitude de movimento.',
-    manobras: 'Desativação de pontos-gatilho (trigger points) com compressão isquêmica, deslizamento profundo com óleo vegetal e trações articulares suaves.',
-    reacao: 'Hiperemia reativa moderada esperada, relaxamento imediato da fáscia muscular e ganho expressivo de mobilidade.',
-    orientacoes: '1. Aplicação de compressa morna por 20 minutos antes de dormir.\n2. Ingestão hídrica abundante (mínimo 2.5L de água).\n3. Pausas ativas a cada 1 hora de trabalho sentado.',
-  },
-  {
-    nome: 'Drenagem Linfática Manual (Edema/Pós-Op)',
-    queixa: 'Sensação de peso, retenção hídrica em membros inferiores e desconforto circulatório.',
-    manobras: 'Drenagem manual método Vodder: evacuação ganglionar supraclavicular, axilar e inguinal, manobras de bombeamento e bracelete suave.',
-    reacao: 'Aumento expressivo do fluxo linfático, alívio da pressão tecidual e redução visual de edema.',
-    orientacoes: '1. Manter pernas elevadas por 20 minutos à noite com apoio de travesseiro.\n2. Evitar alimentos ultraprocessados ricos em sódio.\n3. Caminhada leve de 15 minutos.',
-  },
-  {
-    nome: 'Massagem Relaxante & Aromaterapia',
-    queixa: 'Sobrecarga de estresse, tensão difusa nos ombros e qualidade de sono prejudicada.',
-    manobras: 'Effleurage contínuo, amassamento suave e fricções palmares com blend de óleos essenciais de lavanda francesa e bergamota.',
-    reacao: 'Redução significativa da frequência respiratória, relaxamento neuromusculoesquelético profundo e sensação de bem-estar.',
-    orientacoes: '1. Banho morno relaxante e evitar telas 30 minutos antes de deitar.\n2. Chá de camomila ou melissa.\n3. Prática de respiração diafragmática 4-7-8.',
-  },
-  {
-    nome: 'Ventosaterapia & Recovery Esportivo',
-    queixa: 'Fadiga muscular aguda pós-treino intenso e sensação de queimação muscular.',
-    manobras: 'Ventosaterapia dinâmica deslizante associada a pontos estáticos em paravertebrais e membros inferiores.',
-    reacao: 'Marcas circulares transitórias de estase sanguínea (róseas a arroxeadas) e sensação imediata de descompressão muscular.',
-    orientacoes: '1. Não tomar friagem ou vento gelado nas costas nas próximas 12 horas.\n2. Manter repouso ativo e hidratação reforçada.',
-  },
-];
+// Otimiza e comprime imagem para armazenamento leve e geração rápida de PDF
+const processarImagemUpload = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (readerEvent) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 1200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(readerEvent.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        resolve(dataUrl);
+      };
+      img.onerror = () => reject(new Error('Erro ao processar imagem'));
+      img.src = readerEvent.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
+    reader.readAsDataURL(file);
+  });
+};
 
 export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
   paciente,
@@ -103,23 +119,10 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
     procedimentoInicial ||
     (procedimentos.length > 0 ? procedimentos[0].nome : 'Massagem Terapêutica & Liberação Miofascial');
 
-  const defaultProcObj = procedimentos.find((p) => p.nome === defaultProcNome);
-
   const [dataSessao, setDataSessao] = useState(evolucaoExistente?.dataSessao || hoje);
   const [procedimentoRealizado, setProcedimentoRealizado] = useState(defaultProcNome);
   const [terapeutaResponsavel, setTerapeutaResponsavel] = useState(
     evolucaoExistente?.terapeutaResponsavel || configClinica.nomeTerapeuta
-  );
-
-  // Informações Financeiras da Sessão
-  const [valorPago, setValorPago] = useState<number>(
-    evolucaoExistente?.valorPago ?? (defaultProcObj ? defaultProcObj.precoTotal : 160)
-  );
-  const [formaPagamento, setFormaPagamento] = useState<string>(
-    evolucaoExistente?.formaPagamento || 'pix_infinitepay'
-  );
-  const [lancarFinanceiro, setLancarFinanceiro] = useState<boolean>(
-    evolucaoExistente?.lancarFinanceiro ?? true
   );
 
   // Escala EVA de Dor
@@ -180,6 +183,11 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
     evolucaoExistente?.circunferenciaCm || ''
   );
 
+  // Comparativos Visuais (Fotos de Antes e Depois da Sessão)
+  const [comparativosVisuais, setComparativosVisuais] = useState<ComparativoVisual[]>(
+    evolucaoExistente?.comparativosVisuais || []
+  );
+
   // Relatório de Anamnese & Evolução Clínica
   const [queixaPrincipal, setQueixaPrincipal] = useState(
     evolucaoExistente?.queixaPrincipal || paciente.queixaInicial || ''
@@ -198,26 +206,56 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
     evolucaoExistente?.proximaSessaoRecomendada || ''
   );
 
-  const handleSelectProcedimento = (nome: string) => {
-    setProcedimentoRealizado(nome);
-    const proc = procedimentos.find((p) => p.nome === nome);
-    if (proc && (!evolucaoExistente || valorPago === 0)) {
-      setValorPago(proc.precoTotal);
-    }
-  };
-
   const toggleRegiao = (reg: string) => {
     setRegioesTrabalhadas((prev) =>
       prev.includes(reg) ? prev.filter((r) => r !== reg) : [...prev, reg]
     );
   };
 
-  const aplicarTemplate = (tpl: typeof TEMPLATES_EVOLUCAO[0]) => {
-    setQueixaPrincipal(tpl.queixa);
-    setManobrasAplicadas(tpl.manobras);
-    setReacaoTecidual(tpl.reacao);
-    setOrientacoesCasa(tpl.orientacoes);
-    onShowToast('Modelo Clínico Aplicado', tpl.nome, 'info');
+  // Funções de Comparativos Visuais (Antes & Depois)
+  const handleAdicionarComparativo = () => {
+    const novoComp: ComparativoVisual = {
+      id: `comp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      fotoAntes: '',
+      fotoDepois: '',
+      descricao: '',
+    };
+    setComparativosVisuais((prev) => [...prev, novoComp]);
+  };
+
+  const handleRemoverComparativo = (id: string) => {
+    setComparativosVisuais((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const handleAtualizarDescricaoComparativo = (id: string, descricao: string) => {
+    setComparativosVisuais((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, descricao } : c))
+    );
+  };
+
+  const handleUploadFoto = async (
+    id: string,
+    tipo: 'antes' | 'depois',
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const base64 = await processarImagemUpload(file);
+      setComparativosVisuais((prev) =>
+        prev.map((c) => {
+          if (c.id === id) {
+            return tipo === 'antes' ? { ...c, fotoAntes: base64 } : { ...c, fotoDepois: base64 };
+          }
+          return c;
+        })
+      );
+      onShowToast('Foto Carregada', `Foto de ${tipo === 'antes' ? 'Antes' : 'Depois'} anexada com sucesso.`, 'success');
+    } catch (err) {
+      console.error(err);
+      onShowToast('Erro no Upload', 'Não foi possível processar a foto. Tente outra imagem.', 'error');
+    }
   };
 
   const construirObjetoEvolucao = (): EvolucaoClinica => {
@@ -235,6 +273,7 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
       pesoKg: pesoKg.trim() ? pesoKg.trim() : undefined,
       pesoFinalSessaoKg: pesoFinalSessaoKg.trim() ? pesoFinalSessaoKg.trim() : undefined,
       circunferenciaCm: circunferenciaCm.trim() ? circunferenciaCm.trim() : undefined,
+      comparativosVisuais: comparativosVisuais.filter((c) => c.fotoAntes || c.fotoDepois),
       regioesTrabalhadas,
       queixaPrincipal,
       manobrasAplicadas,
@@ -242,9 +281,6 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
       orientacoesCasa,
       observacoesGerais,
       proximaSessaoRecomendada: proximaSessaoRecomendada || undefined,
-      valorPago: Number(valorPago) || 0,
-      formaPagamento,
-      lancarFinanceiro,
       criadoEm: evolucaoExistente?.criadoEm || new Date().toISOString(),
     };
   };
@@ -258,14 +294,12 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
   const handleBaixarPDF = () => {
     const evo = construirObjetoEvolucao();
     baixarRelatorioPDF(evo, paciente, configClinica);
-    onShowToast('Relatório PDF Gerado!', `Emitido timbrado (${configClinica.cidadeUf || 'Maricá - RJ'}) com marca d'água de proteção.`, 'success');
+    onShowToast('Relatório PDF Gerado!', `Emitido timbrado (${configClinica.cidadeUf || 'Maricá - RJ'}) com registros da sessão.`, 'success');
   };
 
   const handleEnviarWhatsApp = () => {
     const evo = construirObjetoEvolucao();
-    const msg = gerarTextoWhatsAppEvolucao(evo, paciente, configClinica);
-    abrirWhatsAppComTexto(paciente.whatsapp, msg);
-    onShowToast('WhatsApp Aberto', 'Mensagem formatada com orientações da sessão.', 'info');
+    enviarRelatorioAtendimentoWhatsAppComPDF(evo, paciente, configClinica, onShowToast);
   };
 
   const melhoraPercentual =
@@ -324,51 +358,28 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
             </div>
           )}
 
-          {/* Fast Template Bar */}
-          <div className="space-y-1.5 bg-emerald-50/50 p-2.5 sm:p-3 rounded-lg border border-emerald-200/60">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                Modelos Clínicos Prontos (Preenchimento com 1 Clique)
-              </span>
-              <span className="text-[10px] text-emerald-700">Agilize seu relatório</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {TEMPLATES_EVOLUCAO.map((tpl, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => aplicarTemplate(tpl)}
-                  className="px-2.5 py-1 text-xs font-semibold bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md shadow-2xs transition-colors"
-                >
-                  ⚡ {tpl.nome}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Seção 1: Procedimento, Data e Dados Financeiros */}
+          {/* Seção 1: Procedimento Realizado, Data e Terapeuta Responsável */}
           <div className="bg-slate-50 p-3 sm:p-3.5 rounded-lg border border-slate-200 space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-              1. Procedimento Realizado & Registro Financeiro da Sessão
+              1. Procedimento Realizado & Terapeuta Responsável
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
               {/* Procedimento */}
               <div className="sm:col-span-6">
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Procedimento / Terapia
+                  Procedimento / Terapia Realizada
                 </label>
                 {procedimentos.length > 0 ? (
                   <select
                     value={procedimentoRealizado}
-                    onChange={(e) => handleSelectProcedimento(e.target.value)}
+                    onChange={(e) => setProcedimentoRealizado(e.target.value)}
                     className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
                   >
                     {procedimentos.map((proc) => (
                       <option key={proc.id} value={proc.nome}>
-                        {proc.nome} — R$ {proc.precoTotal.toFixed(2)} ({proc.duracaoMinutos} min)
+                        {proc.nome} ({proc.duracaoMinutos} min)
                       </option>
                     ))}
                     <option value="Outro Procedimento">Outro Procedimento Personalizado...</option>
@@ -396,63 +407,13 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
 
               {/* Terapeuta */}
               <div className="sm:col-span-3">
-                <label className="text-xs font-semibold text-slate-700 block mb-1">Terapeuta</label>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">Terapeuta Responsável</label>
                 <input
                   type="text"
                   value={terapeutaResponsavel}
                   onChange={(e) => setTerapeutaResponsavel(e.target.value)}
                   className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
-              </div>
-
-              {/* Valor Pago da Sessão */}
-              <div className="sm:col-span-4">
-                <label className="text-xs font-semibold text-slate-700 block mb-1 flex items-center gap-1">
-                  <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                  Valor Pago nesta Sessão (R$)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={valorPago}
-                  onChange={(e) => setValorPago(Number(e.target.value))}
-                  placeholder="0,00"
-                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-bold text-slate-900"
-                />
-              </div>
-
-              {/* Forma de Pagamento */}
-              <div className="sm:col-span-4">
-                <label className="text-xs font-semibold text-slate-700 block mb-1 flex items-center gap-1">
-                  <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
-                  Forma de Pagamento
-                </label>
-                <select
-                  value={formaPagamento}
-                  onChange={(e) => setFormaPagamento(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
-                >
-                  <option value="pix_infinitepay">⚡ Pix Instantâneo InfinitePay</option>
-                  <option value="cartao_credito">💳 Cartão de Crédito (InfinitePay / Link)</option>
-                  <option value="dinheiro">💵 Dinheiro Presencial (Espécie)</option>
-                  <option value="cartao_debito">💳 Cartão de Débito</option>
-                  <option value="pacote">📦 Pacote de Sessões (Já Pago)</option>
-                  <option value="transferencia">🏦 Transferência Bancária</option>
-                </select>
-              </div>
-
-              {/* Lançar no Financeiro Checkbox */}
-              <div className="sm:col-span-4 flex items-center pt-5">
-                <label className="flex items-center gap-2 text-xs font-medium text-slate-800 cursor-pointer select-none bg-white p-2 rounded border border-slate-200 w-full hover:bg-slate-50">
-                  <input
-                    type="checkbox"
-                    checked={lancarFinanceiro}
-                    onChange={(e) => setLancarFinanceiro(e.target.checked)}
-                    className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
-                  />
-                  <span>Lançar no Livro Caixa Financeiro</span>
-                </label>
               </div>
             </div>
           </div>
@@ -592,12 +553,180 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
             </div>
           </div>
 
-          {/* Seção 4: Regiões Anatômicas */}
+          {/* Seção 4: Comparativo Visual (Fotos de Antes e Depois) */}
+          <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Camera className="w-4 h-4 text-teal-700" />
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  4. Comparativos Visuais (Fotos de Antes e Depois)
+                </h4>
+              </div>
+              <button
+                type="button"
+                id="btn-add-comparativo-visual"
+                onClick={handleAdicionarComparativo}
+                className="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-md text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Adicionar Comparativo Visual</span>
+              </button>
+            </div>
+
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Adicione fotos de Antes e Depois para acompanhar visualmente a resposta tecidual, redução de edema, alinhamento postural ou relaxamento muscular. Estas imagens são exportadas lado a lado no Relatório Oficial do Paciente.
+            </p>
+
+            {comparativosVisuais.length === 0 ? (
+              <div className="border border-dashed border-slate-300 rounded-lg p-4 text-center bg-white">
+                <ImageIcon className="w-7 h-7 text-slate-400 mx-auto mb-1" />
+                <p className="text-xs font-medium text-slate-600">Nenhum comparativo visual adicionado nesta sessão.</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Clique no botão acima para anexar fotos de Antes e Depois com legenda.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {comparativosVisuais.map((comp, index) => (
+                  <div
+                    key={comp.id}
+                    className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-teal-600" />
+                        Comparativo #{index + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoverComparativo(comp.id)}
+                        className="text-rose-600 hover:text-rose-800 text-xs font-semibold flex items-center gap-1 cursor-pointer p-1 rounded hover:bg-rose-50"
+                        title="Remover este comparativo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remover</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Foto ANTES */}
+                      <div className="border border-slate-200 rounded-lg p-2 bg-slate-50/50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-rose-800 bg-rose-100 px-2 py-0.5 rounded">
+                            Foto ANTES
+                          </span>
+                          {comp.fotoAntes && (
+                            <label className="text-[10px] text-teal-700 hover:underline cursor-pointer">
+                              Trocar foto
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleUploadFoto(comp.id, 'antes', e)}
+                              />
+                            </label>
+                          )}
+                        </div>
+
+                        {comp.fotoAntes ? (
+                          <div className="relative rounded-lg overflow-hidden border border-slate-200 bg-slate-950 aspect-[3/4] min-h-[260px] sm:min-h-[320px] flex items-center justify-center p-1 group">
+                            <img
+                              src={comp.fotoAntes}
+                              alt="Antes da sessão"
+                              className="w-full h-full object-contain transition-transform duration-200 group-hover:scale-[1.02]"
+                            />
+                            <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-rose-600/90 text-white text-[10px] font-bold tracking-wider">
+                              ANTES
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="border-2 border-dashed border-rose-300 hover:border-rose-400 bg-white hover:bg-rose-50/40 rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer transition-colors aspect-[3/4] min-h-[260px] sm:min-h-[320px]">
+                            <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center mb-2">
+                              <UploadCloud className="w-6 h-6 text-rose-600" />
+                            </div>
+                            <span className="text-xs font-bold text-rose-800">Enviar Foto de Antes</span>
+                            <span className="text-[10px] text-slate-400 mt-1 text-center">Foto na vertical (em pé)<br/>JPG, PNG ou Câmera</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleUploadFoto(comp.id, 'antes', e)}
+                            />
+                          </label>
+                        )}
+                      </div>
+
+                      {/* Foto DEPOIS */}
+                      <div className="border border-slate-200 rounded-lg p-2 bg-slate-50/50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                            Foto DEPOIS
+                          </span>
+                          {comp.fotoDepois && (
+                            <label className="text-[10px] text-teal-700 hover:underline cursor-pointer">
+                              Trocar foto
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleUploadFoto(comp.id, 'depois', e)}
+                              />
+                            </label>
+                          )}
+                        </div>
+
+                        {comp.fotoDepois ? (
+                          <div className="relative rounded-lg overflow-hidden border border-slate-200 bg-slate-950 aspect-[3/4] min-h-[260px] sm:min-h-[320px] flex items-center justify-center p-1 group">
+                            <img
+                              src={comp.fotoDepois}
+                              alt="Depois da sessão"
+                              className="w-full h-full object-contain transition-transform duration-200 group-hover:scale-[1.02]"
+                            />
+                            <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-emerald-600/90 text-white text-[10px] font-bold tracking-wider">
+                              DEPOIS
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="border-2 border-dashed border-emerald-300 hover:border-emerald-400 bg-white hover:bg-emerald-50/40 rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer transition-colors aspect-[3/4] min-h-[260px] sm:min-h-[320px]">
+                            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mb-2">
+                              <UploadCloud className="w-6 h-6 text-emerald-600" />
+                            </div>
+                            <span className="text-xs font-bold text-emerald-800">Enviar Foto de Depois</span>
+                            <span className="text-[10px] text-slate-400 mt-1 text-center">Foto na vertical (em pé)<br/>JPG, PNG ou Câmera</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleUploadFoto(comp.id, 'depois', e)}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Descrição / Legenda opcional */}
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-700 block mb-0.5">
+                        Descrição / Legenda do Comparativo (Opcional):
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Região lombar e flancos após liberação miofascial / drenagem manual"
+                        value={comp.descricao || ''}
+                        onChange={(e) => handleAtualizarDescricaoComparativo(comp.id, e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Seção 5: Regiões Anatômicas */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                 <HeartPulse className="w-3.5 h-3.5 text-emerald-600" />
-                4. Regiões Anatômicas Trabalhadas
+                5. Regiões Anatômicas Trabalhadas
               </label>
               <button
                 type="button"
@@ -664,11 +793,11 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
             </div>
           </div>
 
-          {/* Seção 5: Relatório de Anamnese & Evolução da Sessão */}
+          {/* Seção 6: Relatório de Anamnese & Evolução da Sessão */}
           <div className="space-y-3 text-xs">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-emerald-600" />
-              5. Relatório de Anamnese & Evolução da Sessão
+              6. Relatório de Anamnese & Evolução da Sessão
             </h4>
 
             <div>
@@ -781,10 +910,10 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
               id="btn-enviar-whats-sessao"
               onClick={handleEnviarWhatsApp}
               className="py-2.5 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-2xs cursor-pointer"
-              title="Abre o WhatsApp com o resumo clínico e orientações para o paciente"
+              title="Abre o WhatsApp com o resumo clínico e anexo do PDF"
             >
               <Send className="w-4 h-4" />
-              <span>Enviar via WhatsApp</span>
+              <span>Enviar WhatsApp com PDF</span>
             </button>
           </div>
 
@@ -796,3 +925,4 @@ export const EvolucaoModal: React.FC<EvolucaoModalProps> = ({
     </div>
   );
 };
+

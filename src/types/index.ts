@@ -66,6 +66,13 @@ export interface RegiaoDor {
   tipo: 'tensao' | 'dor_aguda' | 'dor_cronica' | 'edema' | 'ponto_gatilho';
 }
 
+export interface ComparativoVisual {
+  id: string;
+  fotoAntes: string; // Base64 Data URL ou URL da imagem
+  fotoDepois: string; // Base64 Data URL ou URL da imagem
+  descricao?: string; // Legenda opcional da comparação
+}
+
 export interface EvolucaoClinica {
   id: string;
   pacienteId: string;
@@ -90,6 +97,9 @@ export interface EvolucaoClinica {
   pesoFinalSessaoKg?: string | number; // Peso pós-sessão/drenagem (ex: "64.9 kg") - Opcional
   circunferenciaCm?: string; // Medidas de circunferência (ex: "Abdômen: 78cm, Coxa: 54cm") - Opcional
 
+  // Comparativos Visuais (Fotos Antes e Depois com Legenda)
+  comparativosVisuais?: ComparativoVisual[];
+
   queixaPrincipal: string;
   manobrasAplicadas: string; // Ex: Fricção profunda, trigger points, drenagem linfática manual Vodder
   reacaoTecidual: string; // Ex: Hiperemia transitória moderada, relaxamento miofascial expressivo
@@ -97,12 +107,18 @@ export interface EvolucaoClinica {
   observacoesGerais: string;
   proximaSessaoRecomendada?: string;
   
-  // Detalhes Financeiros da Sessão (Opcional - não incluídos no PDF de anamnese/clínico)
+  // Detalhes Financeiros da Sessão (Legado/Opcional - mantido para retrocompatibilidade de dados já salvos)
   valorPago?: number;
   formaPagamento?: 'pix_infinitepay' | 'pix_inter' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'transferencia' | 'pacote' | string;
   lancarFinanceiro?: boolean;
   
   criadoEm: string;
+}
+
+export interface OpcoesRelatorioDesenvolvimento {
+  sinteseInicial: string;
+  conclusaoTerapeutica: string;
+  incluirFotosAntesDepois?: boolean;
 }
 
 export interface Paciente {

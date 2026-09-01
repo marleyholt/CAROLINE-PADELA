@@ -322,25 +322,39 @@ export const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
             </div>
 
             <div>
-              <label className="font-semibold text-[11px] text-slate-700 block mb-1">InfiniteTag / Handle do Consultório</label>
+              <label className="font-semibold text-[11px] text-slate-700 block mb-1">InfiniteTag / Handle do Consultório (sem o $)</label>
               <input
                 type="text"
-                placeholder="Ex: $carolpadela"
+                placeholder="Ex: caroline-padela"
                 value={infinitePay.infiniteTag || ''}
-                onChange={(e) => setInfinitePay({ ...infinitePay, infiniteTag: e.target.value })}
+                onChange={(e) => setInfinitePay({ ...infinitePay, infiniteTag: e.target.value.replace(/^\$/, '').trim() })}
                 className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-mono bg-slate-50 focus:outline-none text-emerald-800 font-bold"
               />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Sua tag no app InfinitePay (ex: <code>caroline-padela</code>)</span>
             </div>
 
             <div>
-              <label className="font-semibold text-[11px] text-slate-700 block mb-1">Link de Pagamento InfinitePay (Opcional)</label>
-              <input
-                type="text"
-                placeholder="https://infinitepay.io/$carolpadela"
-                value={infinitePay.linkPagamento || ''}
-                onChange={(e) => setInfinitePay({ ...infinitePay, linkPagamento: e.target.value })}
-                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-mono bg-slate-50 focus:outline-none"
-              />
+              <label className="font-semibold text-[11px] text-slate-700 block mb-1">Link de Pagamento / Cobrança Direta (App InfinitePay)</label>
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  placeholder="Ex: https://link.infinitepay.io/caroline-padela ou seu link do App"
+                  value={infinitePay.linkPagamento || ''}
+                  onChange={(e) => setInfinitePay({ ...infinitePay, linkPagamento: e.target.value })}
+                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-mono bg-slate-50 focus:outline-none"
+                />
+                <a
+                  href={infinitePay.linkPagamento || `https://link.infinitepay.io/${(infinitePay.infiniteTag || 'caroline-padela').replace(/^\$/, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md border border-slate-300 text-xs font-medium flex items-center gap-1 shrink-0 transition-colors"
+                  title="Testar link no navegador"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Testar</span>
+                </a>
+              </div>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">No app InfinitePay do celular: vá em Cobrar &gt; Link de Pagamento e cole aqui o seu link</span>
             </div>
 
             <div>
@@ -382,13 +396,16 @@ export const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
           <div className="bg-emerald-50/70 border border-emerald-200 rounded-md p-2.5 text-[11px] text-emerald-950 space-y-1">
             <span className="font-bold flex items-center gap-1 text-xs text-emerald-900">
               <HelpCircle className="w-3.5 h-3.5 text-emerald-700" />
-              Vantagens da cobrança via InfinitePay:
+              Como funciona o pagamento InfinitePay:
             </span>
             <p>
-              1. <strong>Pix Instantâneo:</strong> O valor do sinal de 50% cai na hora na sua conta InfinitePay com taxa zero.
+              1. <strong>InfiniteTag:</strong> Seu nome de usuário no app (ex: <code>caroline-padela</code> sem $).
             </p>
             <p>
-              2. <strong>Cartão de Crédito e InfiniteTag:</strong> O paciente pode pagar tanto pelo QR Code Pix quanto pelo seu link <strong>infinitepay.io/$seunome</strong> com as menores taxas do mercado.
+              2. <strong>Link de Pagamento:</strong> Se você criou um link de cobrança no app da InfinitePay, cole no campo acima (ex: <code>https://link.infinitepay.io/caroline-padela</code>).
+            </p>
+            <p>
+              3. <strong>Pix Instantâneo:</strong> O QR Code Pix gerado pelo sistema é 100% automático e creditado diretamente na sua chave.
             </p>
           </div>
 

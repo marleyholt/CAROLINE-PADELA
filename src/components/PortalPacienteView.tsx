@@ -63,8 +63,8 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
     tipoChavePix: 'telefone',
     nomeTitular: 'CAROLINE PADELA',
     cidadeTitular: 'MARICA',
-    infiniteTag: 'carolpadela',
-    linkPagamento: 'https://infinitepay.io/$carolpadela',
+    infiniteTag: 'caroline-padela',
+    linkPagamento: 'https://infinitepay.io/pay/caroline-padela',
     ambiente: 'producao',
     webhookAtivo: true,
   };
@@ -141,7 +141,7 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
       const finalRedirectUrl = `${redirectTarget}${redirectTarget.includes('?') ? '&' : '?'}order_nsu=${encodeURIComponent(orderNsu)}&status=retorno_infinitepay`;
 
       criarCheckoutLinkInfinitePay({
-        handle: activeConfig.infiniteTag || 'carolpadela',
+        handle: activeConfig.infiniteTag || 'caroline-padela',
         valor: valorIntegralCartao,
         descricaoItem: `Pagamento Integral (Cartão de Crédito) - ${selectedProc.nome} (${nome || 'Paciente'})`,
         orderNsu,
@@ -157,8 +157,8 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
           setCheckoutUrl(res.checkoutUrl);
         })
         .catch(() => {
-          const fallbackTag = (activeConfig.infiniteTag || 'carolpadela').replace(/^\$/, '');
-          setCheckoutUrl(`https://infinitepay.io/$${fallbackTag}`);
+          const fallbackTag = (activeConfig.infiniteTag || 'caroline-padela').replace(/^\$/, '').trim();
+          setCheckoutUrl(activeConfig.linkPagamento || `https://infinitepay.io/pay/${fallbackTag}`);
         })
         .finally(() => {
           setLoadingCheckout(false);
@@ -179,8 +179,8 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
     setSalvando(true);
 
     try {
-      const fallbackTag = (activeConfig.infiniteTag || 'carolpadela').replace(/^\$/, '');
-      const url = checkoutUrl || `https://infinitepay.io/$${fallbackTag}`;
+      const fallbackTag = (activeConfig.infiniteTag || 'caroline-padela').replace(/^\$/, '').trim();
+      const url = checkoutUrl || activeConfig.linkPagamento || `https://infinitepay.io/pay/${fallbackTag}`;
       const orderNsu = `ag-${Date.now()}`;
 
       // No Cartão de Crédito, o pagamento é INTEGRAL (100%)

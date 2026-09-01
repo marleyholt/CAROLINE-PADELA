@@ -55,8 +55,8 @@ export const PublicAgendamentoModal: React.FC<PublicAgendamentoModalProps> = ({
     tipoChavePix: 'telefone',
     nomeTitular: 'CAROLINE PADELA',
     cidadeTitular: 'MARICA',
-    infiniteTag: 'carolpadela',
-    linkPagamento: 'https://infinitepay.io/$carolpadela',
+    infiniteTag: 'caroline-padela',
+    linkPagamento: 'https://infinitepay.io/pay/caroline-padela',
     ambiente: 'producao',
     webhookAtivo: true,
   };
@@ -105,7 +105,8 @@ export const PublicAgendamentoModal: React.FC<PublicAgendamentoModalProps> = ({
 
       // 2. Gera Link de Checkout Externo InfinitePay para Cartão de Crédito com Valor Integral (100%)
       criarCheckoutLinkInfinitePay({
-        handle: activeConfig.infiniteTag || 'carolpadela',
+        handle: activeConfig.infiniteTag || 'caroline-padela',
+        linkPagamento: activeConfig.linkPagamento,
         valor: valorIntegralCartao,
         descricaoItem: `Pagamento Integral (Cartão de Crédito) - ${selectedProc.nome} (${nome || 'Paciente'})`,
         orderNsu,
@@ -123,9 +124,8 @@ export const PublicAgendamentoModal: React.FC<PublicAgendamentoModalProps> = ({
           setCheckoutUrl(res.checkoutUrl);
         })
         .catch(() => {
-          const fallbackTag = activeConfig.infiniteTag || 'carolpadela';
-          const tagClean = fallbackTag.startsWith('$') ? fallbackTag : `$${fallbackTag}`;
-          setCheckoutUrl(`https://infinitepay.io/${tagClean}`);
+          const fallbackTag = (activeConfig.infiniteTag || 'caroline-padela').replace(/^\$/, '').trim();
+          setCheckoutUrl(activeConfig.linkPagamento || `https://link.infinitepay.io/${fallbackTag}`);
         })
         .finally(() => {
           setLoadingCheckout(false);
@@ -143,7 +143,8 @@ export const PublicAgendamentoModal: React.FC<PublicAgendamentoModalProps> = ({
 
   const handleAbrirCheckoutInfinitePay = () => {
     if (!selectedProc) return;
-    const url = checkoutUrl || (activeConfig.infiniteTag ? `https://infinitepay.io/$${activeConfig.infiniteTag.replace('$', '')}` : 'https://infinitepay.io');
+    const fallbackTag = (activeConfig.infiniteTag || 'caroline-padela').replace(/^\$/, '').trim();
+    const url = checkoutUrl || activeConfig.linkPagamento || `https://link.infinitepay.io/${fallbackTag}`;
     
     // No Cartão de Crédito, o pagamento é INTEGRAL (100%)
     const novo: Agendamento = {

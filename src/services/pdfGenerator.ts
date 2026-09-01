@@ -1,5 +1,11 @@
 import jsPDF from 'jspdf';
-import { ConfiguracaoClinica, EvolucaoClinica, Paciente } from '../types';
+import {
+  ConfiguracaoClinica,
+  EvolucaoClinica,
+  Paciente,
+  OpcoesRelatorioDesenvolvimento,
+  ComparativoVisual,
+} from '../types';
 import { formatarDataBR } from '../utils/dateUtils';
 
 /**
@@ -501,10 +507,173 @@ export function gerarRelatorioEvolucaoPDFNodes(
     y += lines.length * 4.2 + 5.5;
   });
 
+  // Se houver fotos de antes e depois registradas nesta sessão, renderiza os comparativos visuais
+  if (evolucao.comparativosVisuais && evolucao.comparativosVisuais.length > 0) {
+    y = renderizarSecaoComparativos(
+      doc,
+      evolucao.comparativosVisuais,
+      y,
+      pageWidth,
+      pageHeight,
+      margin,
+      clinica,
+      '5. Comparativos Visuais da Sessão (Antes & Depois)'
+    );
+  }
+
   // 5. Rodapé oficial bege
   desenharRodapeOficial(doc, pageWidth, pageHeight, clinica);
 
   return doc;
+}
+
+/**
+ * Renderiza uma imagem no PDF preservando estritamente sua proporção original (aspect ratio)
+ * sem esticar, amassar ou distorcer a anatomia da paciente
+ */
+function renderizarImagemProporcional(
+  doc: jsPDF,
+  imgData: string,
+  boxX: number,
+  boxY: number,
+  boxWidth: number,
+  boxHeight: number
+): void {
+  try {
+    const format = imgData.includes('image/png') ? 'PNG' : 'JPEG';
+    const props = doc.getImageProperties(imgData);
+    const imgRatio = props.width / props.height;
+    const boxRatio = boxWidth / boxHeight;
+
+    let renderW = boxWidth;
+    let renderH = boxHeight;
+
+    if (imgRatio > boxRatio) {
+      // Imagem mais larga (paisagem) -> ajusta pela largura
+      renderW = boxWidth;
+      renderH = renderW / imgRatio;
+    } else {
+      // Imagem mais alta (retrato/vertical) -> ajusta pela altura
+      renderH = boxHeight;
+      renderW = renderH * imgRatio;
+    }
+
+    // Centralizar perfeitamente dentro do box
+    const posX = boxX + (boxWidth - renderW) / 2;
+    const posY = boxY + (boxHeight - renderH) / 2;
+
+    doc.addImage(imgData, format, posX, posY, renderW, renderH);
+  } catch (err) {
+    console.warn('Erro ao processar imagem proporcional no PDF:', err);
+    try {
+      const format = imgData.includes('image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(imgData, format, boxX, boxY, boxWidth, boxHeight);
+    } catch {}
+  }
+}
+
+/**
+ * Renderiza os blocos de fotos Antes e Depois lado a lado com dimensões amplas para fotos verticais de celular
+ */
+function renderizarSecaoComparativos(
+  doc: jsPDF,
+  comparativos: ComparativoVisual[],
+  startY: number,
+  pageWidth: number,
+  pageHeight: number,
+  margin: number,
+  clinica: ConfiguracaoClinica,
+  tituloSecao: string = 'Comparativos Visuais (Antes & Depois)'
+): number {
+  let y = startY;
+  const contentWidth = pageWidth - margin * 2;
+  const cardWidth = (contentWidth - 8) / 2;
+  // Altura ampla de 96mm para fotos tiradas em pé com telefone (retrato)
+  const imgHeight = 96;
+  const rodapeHeight = 34;
+  const maxUsableY = pageHeight - rodapeHeight - 10;
+
+  // Se não couber o título e o primeiro bloco na página atual, abre nova página
+  if (y + imgHeight + 20 > maxUsableY) {
+    desenharRodapeOficial(doc, pageWidth, pageHeight, clinica);
+    doc.addPage();
+    desenharCabecalhoOficial(doc, pageWidth, clinica);
+    y = 38;
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(15, 20, 18);
+  doc.text(tituloSecao, margin, y);
+  y += 5.5;
+
+  comparativos.forEach((comp, idx) => {
+    const blockHeight = imgHeight + 14 + (comp.descricao ? 8 : 0);
+
+    if (y + blockHeight > maxUsableY) {
+      desenharRodapeOficial(doc, pageWidth, pageHeight, clinica);
+      doc.addPage();
+      desenharCabecalhoOficial(doc, pageWidth, clinica);
+      y = 38;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(30, 40, 35);
+    doc.text(`Comparativo Visual #${idx + 1}`, margin, y);
+    y += 4;
+
+    const xAntes = margin;
+    const xDepois = margin + cardWidth + 8;
+
+    // Foto ANTES
+    doc.setDrawColor(210, 218, 214);
+    doc.setFillColor(244, 246, 245);
+    doc.rect(xAntes, y, cardWidth, imgHeight, 'FD');
+
+    if (comp.fotoAntes) {
+      renderizarImagemProporcional(doc, comp.fotoAntes, xAntes + 1, y + 1, cardWidth - 2, imgHeight - 2);
+    }
+    // Badge ANTES
+    doc.setFillColor(180, 40, 40);
+    doc.rect(xAntes + 2, y + 2, 18, 5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.text('ANTES', xAntes + 11, y + 5.5, { align: 'center' });
+
+    // Foto DEPOIS
+    doc.setDrawColor(210, 218, 214);
+    doc.setFillColor(244, 246, 245);
+    doc.rect(xDepois, y, cardWidth, imgHeight, 'FD');
+
+    if (comp.fotoDepois) {
+      renderizarImagemProporcional(doc, comp.fotoDepois, xDepois + 1, y + 1, cardWidth - 2, imgHeight - 2);
+    }
+    // Badge DEPOIS
+    doc.setFillColor(13, 128, 85);
+    doc.rect(xDepois + 2, y + 2, 18, 5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.text('DEPOIS', xDepois + 11, y + 5.5, { align: 'center' });
+
+    y += imgHeight + 3;
+
+    // Legenda opcional
+    if (comp.descricao && comp.descricao.trim()) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(60, 70, 65);
+      const linesDesc = doc.splitTextToSize(`Legenda / Observação: ${comp.descricao.trim()}`, contentWidth);
+      doc.text(linesDesc, margin, y);
+      y += linesDesc.length * 3.5 + 2;
+    }
+
+    y += 4;
+  });
+
+  return y;
 }
 
 export function gerarRelatorioEvolucaoPDF(
@@ -517,12 +686,13 @@ export function gerarRelatorioEvolucaoPDF(
 
 /**
  * GERA O RELATÓRIO GERAL DE DESENVOLVIMENTO & EVOLUÇÃO MULTI-SESSÕES
- * Mantém o mesmo padrão de excelência visual com histórico comparativo
+ * Mantém o mesmo padrão de excelência visual com histórico comparativo, antropometria e fotos
  */
 export function gerarRelatorioDesenvolvimentoGeralPDF(
   paciente: Paciente,
   evolucoes: EvolucaoClinica[],
-  clinica: ConfiguracaoClinica
+  clinica: ConfiguracaoClinica,
+  opcoes?: OpcoesRelatorioDesenvolvimento
 ): jsPDF {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -534,17 +704,16 @@ export function gerarRelatorioDesenvolvimentoGeralPDF(
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 18;
   const contentWidth = pageWidth - margin * 2;
+  const rodapeHeight = 34;
+  const maxUsableY = pageHeight - rodapeHeight - 10;
 
-  // 1. Marca d'água removida para manter fundo limpo e alta legibilidade
-  // desenharMarcaDagua desativada a pedido
-
-  // 2. Cabeçalho oficial preto
+  // 1. Cabeçalho oficial preto
   desenharCabecalhoOficial(doc, pageWidth, clinica);
 
-  // 3. Faixa de título "RELATÓRIO DE DESENVOLVIMENTO"
+  // 2. Faixa de título "RELATÓRIO DE DESENVOLVIMENTO CLÍNICO"
   let y = desenharFaixaTitulo(doc, pageWidth, 28, 'R E L A T Ó R I O   D E', 'D E S E N V O L V I M E N T O   C L Í N I C O');
 
-  // 4. Identificação do Paciente
+  // 3. Identificação do Paciente
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(20, 25, 22);
@@ -565,19 +734,19 @@ export function gerarRelatorioDesenvolvimentoGeralPDF(
   doc.setFont('helvetica', 'normal');
   doc.text(`${evolucoes.length} sessão(ões)`, margin + 128, y);
 
-  // Dados Físicos Opcionais da Anamnese (Peso, Altura, Idade) - Só aparecem se preenchidos
+  // Dados Físicos da Ficha Cadastral (Idade, Altura, Peso Base)
   const dadosFisicosGeral: string[] = [];
   if (paciente.idade && paciente.idade.toString().trim() !== '') {
     const idStr = paciente.idade.toString().trim();
     dadosFisicosGeral.push(`Idade: ${idStr.toLowerCase().includes('ano') ? idStr : `${idStr} anos`}`);
   }
-  if (paciente.peso && paciente.peso.toString().trim() !== '') {
-    const pStr = paciente.peso.toString().trim();
-    dadosFisicosGeral.push(`Peso: ${pStr.toLowerCase().includes('kg') ? pStr : `${pStr} kg`}`);
-  }
   if (paciente.altura && paciente.altura.toString().trim() !== '') {
     const aStr = paciente.altura.toString().trim();
     dadosFisicosGeral.push(`Altura: ${aStr.toLowerCase().includes('m') || aStr.toLowerCase().includes('cm') ? aStr : `${aStr} m`}`);
+  }
+  if (paciente.peso && paciente.peso.toString().trim() !== '') {
+    const pStr = paciente.peso.toString().trim();
+    dadosFisicosGeral.push(`Peso Base: ${pStr.toLowerCase().includes('kg') ? pStr : `${pStr} kg`}`);
   }
 
   if (dadosFisicosGeral.length > 0) {
@@ -585,20 +754,20 @@ export function gerarRelatorioDesenvolvimentoGeralPDF(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(60, 70, 65);
-    doc.text(`Dados Físicos: `, margin, y);
+    doc.text(`Dados Físicos Cadastrais: `, margin, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(dadosFisicosGeral.join('   |   '), margin + 23, y);
+    doc.text(dadosFisicosGeral.join('   |   '), margin + 40, y);
   }
 
-  y += 8;
+  y += 7.5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(15, 20, 18);
   doc.text('Análise de Progresso & Acompanhamento Terapêutico:', margin, y);
 
-  y += 7;
+  y += 6.5;
 
-  // Seção 1: Quadro Geral & Histórico Inicial
+  // Seção 1: Síntese Inicial do Paciente (Anamnese Base - Editável)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(15, 20, 18);
@@ -608,26 +777,91 @@ export function gerarRelatorioDesenvolvimentoGeralPDF(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(40, 45, 42);
-  const queixaBase = paciente.queixaInicial 
-    ? `Queixa primária: ${paciente.queixaInicial}. Histórico médico: ${paciente.historicoMedico || 'Sem comorbidades registradas'}. Nível de atividade física: ${paciente.nivelAtividadeFisica}.`
-    : 'Acompanhamento contínuo de manutenção postural, liberação miofascial e alívio de tensões acumuladas.';
+
+  const queixaBase = opcoes?.sinteseInicial && opcoes.sinteseInicial.trim()
+    ? opcoes.sinteseInicial.trim()
+    : (paciente.queixaInicial 
+        ? `Queixa primária: ${paciente.queixaInicial}. Histórico médico: ${paciente.historicoMedico || 'Sem comorbidades registradas'}. Medicações: ${paciente.medicacoesUso || 'Nenhuma'}. Nível de atividade física: ${paciente.nivelAtividadeFisica}.`
+        : 'Acompanhamento contínuo de manutenção postural, liberação miofascial e alívio de tensões acumuladas.');
   
   const linesQueixa = doc.splitTextToSize(queixaBase, contentWidth);
   doc.text(linesQueixa, margin, y, { lineHeightFactor: 1.35 });
   y += linesQueixa.length * 4.2 + 5.5;
 
-  // Seção 2: Linha do Tempo de Evolução & Respostas
+  // Seção Antropométrica / Perda Líquida & Circunferências (se houver sessões com peso ou medidas)
+  const sessoesComAntropometria = evolucoes.filter(
+    (e) => (e.pesoKg && e.pesoKg.toString().trim() !== '') || (e.circunferenciaCm && e.circunferenciaCm.trim() !== '')
+  );
+
+  if (sessoesComAntropometria.length > 0) {
+    if (y > maxUsableY - 25) {
+      desenharRodapeOficial(doc, pageWidth, pageHeight, clinica);
+      doc.addPage();
+      desenharCabecalhoOficial(doc, pageWidth, clinica);
+      y = 38;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 20, 18);
+    doc.text('2. Acompanhamento Corporal & Perda de Líquidos (Sessões / Drenagem)', margin, y);
+    y += 4.5;
+
+    // Mini Tabela de Registros Antropométricos
+    sessoesComAntropometria.slice(0, 6).forEach((sessao) => {
+      if (y > maxUsableY - 8) return;
+
+      const dataSess = formatarDataBR(sessao.dataSessao);
+      let infoPeso = '';
+      if (sessao.pesoKg) {
+        const pIni = parseFloat(sessao.pesoKg.toString().replace(',', '.'));
+        infoPeso += `Peso Inicial: ${sessao.pesoKg} kg`;
+        if (sessao.pesoFinalSessaoKg) {
+          const pFim = parseFloat(sessao.pesoFinalSessaoKg.toString().replace(',', '.'));
+          infoPeso += ` ➔ Pós-Sessão: ${sessao.pesoFinalSessaoKg} kg`;
+          if (!isNaN(pIni) && !isNaN(pFim) && pIni > pFim) {
+            const dif = (pIni - pFim).toFixed(2);
+            infoPeso += ` (Perda Líquida: -${dif} kg)`;
+          }
+        }
+      }
+      if (sessao.circunferenciaCm) {
+        infoPeso += infoPeso ? ` | Medidas: ${sessao.circunferenciaCm}` : `Medidas: ${sessao.circunferenciaCm}`;
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(20, 90, 80);
+      doc.text(`• ${dataSess}: `, margin + 2, y);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(50, 60, 55);
+      doc.text(infoPeso, margin + 24, y);
+      y += 4.2;
+    });
+
+    y += 3;
+  }
+
+  // Seção Cronológica de Atendimentos
+  const numSecCronologico = sessoesComAntropometria.length > 0 ? '3' : '2';
+  if (y > maxUsableY - 30) {
+    desenharRodapeOficial(doc, pageWidth, pageHeight, clinica);
+    doc.addPage();
+    desenharCabecalhoOficial(doc, pageWidth, clinica);
+    y = 38;
+  }
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(15, 20, 18);
-  doc.text('2. Histórico Cronológico de Atendimentos', margin, y);
+  doc.text(`${numSecCronologico}. Histórico Cronológico de Atendimentos`, margin, y);
   y += 4.5;
 
-  // Lista as sessões ordenadas
-  const sessõesOrdenadas = [...evolucoes].sort((a, b) => b.dataSessao.localeCompare(a.dataSessao)).slice(0, 5);
+  const sessõesOrdenadas = [...evolucoes].sort((a, b) => b.dataSessao.localeCompare(a.dataSessao)).slice(0, 6);
 
   sessõesOrdenadas.forEach((sessao, idx) => {
-    if (y > pageHeight - 45) return; // Limite da página antes do rodapé
+    if (y > maxUsableY - 14) return;
 
     const dataSess = formatarDataBR(sessao.dataSessao);
     doc.setFont('helvetica', 'bold');
@@ -652,23 +886,58 @@ export function gerarRelatorioDesenvolvimentoGeralPDF(
     y += Math.min(linesRes.length, 2) * 3.8 + 4;
   });
 
-  // Seção 3: Parecer Geral e Conclusão Terapêutica
-  if (y < pageHeight - 55) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9.5);
-    doc.setTextColor(15, 20, 18);
-    doc.text('3. Conclusão Terapêutica & Próximas Recomendações', margin, y);
-    y += 4.5;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(40, 45, 42);
-    const conclusao = 'O paciente demonstra evolução contínua, com aumento de flexibilidade, desativação de pontos de tensão e ganho expressivo de qualidade de vida. Recomenda-se a continuidade das sessões para manutenção do equilíbrio biomecânico e prevenção de recidivas de dor.';
-    const linesConc = doc.splitTextToSize(conclusao, contentWidth);
-    doc.text(linesConc, margin, y, { lineHeightFactor: 1.35 });
+  // Seção: Parecer Geral e Conclusão Terapêutica (Editável)
+  const numSecConclusao = sessoesComAntropometria.length > 0 ? '4' : '3';
+  if (y > maxUsableY - 24) {
+    desenharRodapeOficial(doc, pageWidth, pageHeight, clinica);
+    doc.addPage();
+    desenharCabecalhoOficial(doc, pageWidth, clinica);
+    y = 38;
   }
 
-  // 5. Rodapé oficial
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 20, 18);
+  doc.text(`${numSecConclusao}. Conclusão Terapêutica & Próximas Recomendações`, margin, y);
+  y += 4.5;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(40, 45, 42);
+
+  const conclusao = opcoes?.conclusaoTerapeutica && opcoes.conclusaoTerapeutica.trim()
+    ? opcoes.conclusaoTerapeutica.trim()
+    : 'O paciente demonstra evolução contínua, com aumento de flexibilidade, desativação de pontos de tensão e ganho expressivo de qualidade de vida. Recomenda-se a continuidade das sessões para manutenção do equilíbrio biomecânico e prevenção de recidivas de dor.';
+  
+  const linesConc = doc.splitTextToSize(conclusao, contentWidth);
+  doc.text(linesConc, margin, y, { lineHeightFactor: 1.35 });
+  y += linesConc.length * 4.2 + 6;
+
+  // Seção de Comparativos Visuais no Relatório de Desenvolvimento (se houver fotos e estiver habilitado)
+  const todosComparativos: ComparativoVisual[] = [];
+  if (opcoes?.incluirFotosAntesDepois !== false) {
+    evolucoes.forEach((e) => {
+      if (e.comparativosVisuais && e.comparativosVisuais.length > 0) {
+        todosComparativos.push(...e.comparativosVisuais);
+      }
+    });
+  }
+
+  if (todosComparativos.length > 0) {
+    const numSecFotos = sessoesComAntropometria.length > 0 ? '5' : '4';
+    y = renderizarSecaoComparativos(
+      doc,
+      todosComparativos,
+      y,
+      pageWidth,
+      pageHeight,
+      margin,
+      clinica,
+      `${numSecFotos}. Comparativos Visuais de Desenvolvimento (Antes & Depois)`
+    );
+  }
+
+  // Rodapé oficial
   desenharRodapeOficial(doc, pageWidth, pageHeight, clinica);
 
   return doc;
@@ -688,9 +957,10 @@ export function baixarRelatorioPDF(
 export function baixarRelatorioDesenvolvimentoPDF(
   paciente: Paciente,
   evolucoes: EvolucaoClinica[],
-  clinica: ConfiguracaoClinica
+  clinica: ConfiguracaoClinica,
+  opcoes?: OpcoesRelatorioDesenvolvimento
 ): void {
-  const doc = gerarRelatorioDesenvolvimentoGeralPDF(paciente, evolucoes, clinica);
+  const doc = gerarRelatorioDesenvolvimentoGeralPDF(paciente, evolucoes, clinica, opcoes);
   const nomeSanitizado = paciente.nome.replace(/[^a-zA-Z0-9]/g, '_');
   doc.save(`Relatorio_Desenvolvimento_${nomeSanitizado}.pdf`);
 }
@@ -707,21 +977,11 @@ export function gerarTextoWhatsAppEvolucao(
 *Relatório de Atendimento & Evolução Clínica*
 
 Olá, *${primeiroNome}*! Tudo bem?
-Aqui é a *${clinica.nomeTerapeuta}* (@carolpadela).
+Segue o seu *Relatório Oficial de Atendimento (PDF)* referente à nossa sessão de *${evolucao.procedimentoRealizado}* realizada em *${dataFormatada}*.
 
-Fiz o registro detalhado da nossa sessão de hoje (*${dataFormatada}*) de *${evolucao.procedimentoRealizado}*.
+📄 O arquivo em PDF anexo contém o registro completo da sua sessão, avaliação de dor, manobras aplicadas e orientações pós-atendimento.
 
-📊 *Resumo da sua evolução:*
-• Dor inicial: ${evolucao.evaInicial}/10 ➔ Dor final: ${evolucao.evaFinal}/10
-• Áreas trabalhadas: ${evolucao.regioesTrabalhadas.join(', ') || 'Corpo todo'}
-
-💧 *Orientações importantes de autocuidado para hoje/amanhã:*
-${evolucao.orientacoesCasa}
-
-${evolucao.proximaSessaoRecomendada ? `🗓️ *Sugestão de retorno:* ${formatarDataBR(evolucao.proximaSessaoRecomendada)}\n` : ''}
-📄 *O seu Relatório de Atendimento oficial em PDF com o prontuário foi gerado no sistema e já está disponível.*
-
-Muito obrigada pela confiança e cuide-se bem! Qualquer dúvida ou sensação diferente, estou à disposição no WhatsApp (21) 97513-4597. ✨`;
+${evolucao.proximaSessaoRecomendada ? `🗓️ *Próximo retorno recomendado:* ${formatarDataBR(evolucao.proximaSessaoRecomendada)}\n` : ''}Muito obrigada pela confiança! Qualquer dúvida ou sensação diferente, estou à disposição no WhatsApp. ✨`;
 }
 
 export function abrirWhatsAppComTexto(telefone: string, mensagem: string): void {
@@ -730,4 +990,117 @@ export function abrirWhatsAppComTexto(telefone: string, mensagem: string): void 
   const encodedMsg = encodeURIComponent(mensagem);
   const url = `https://wa.me/${finalPhone}?text=${encodedMsg}`;
   window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/**
+ * Compartilha o Relatório de Atendimento Oficial em PDF junto com a mensagem enxuta no WhatsApp
+ */
+export async function enviarRelatorioAtendimentoWhatsAppComPDF(
+  evolucao: EvolucaoClinica,
+  paciente: Paciente,
+  clinica: ConfiguracaoClinica,
+  onShowToast?: (title: string, msg?: string, type?: 'success' | 'error' | 'info') => void
+): Promise<void> {
+  const doc = gerarRelatorioEvolucaoPDF(evolucao, paciente, clinica);
+  const nomeSanitizado = paciente.nome.replace(/[^a-zA-Z0-9]/g, '_');
+  const nomeArquivo = `Relatorio_Atendimento_${nomeSanitizado}_${evolucao.dataSessao}.pdf`;
+  const textoMsg = gerarTextoWhatsAppEvolucao(evolucao, paciente, clinica);
+
+  // 1. Em navegadores e dispositivos compatíveis com Web Share com anexo de arquivos
+  try {
+    const pdfBlob = doc.output('blob');
+    const pdfFile = new File([pdfBlob], nomeArquivo, { type: 'application/pdf' });
+
+    if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+      await navigator.share({
+        title: `Relatório de Atendimento - ${paciente.nome}`,
+        text: textoMsg,
+        files: [pdfFile],
+      });
+      if (onShowToast) {
+        onShowToast('Relatório Enviado!', 'PDF e mensagem compartilhados com sucesso.', 'success');
+      }
+      return;
+    }
+  } catch (err: any) {
+    if (err?.name === 'AbortError') return; // Usuário fechou o diálogo
+    console.warn('Web Share indisponível ou cancelado, acionando fluxo de download:', err);
+  }
+
+  // 2. Fluxo Desktop / WhatsApp Web: Baixa o PDF e abre a conversa com o texto pronto
+  doc.save(nomeArquivo);
+
+  try {
+    await navigator.clipboard.writeText(textoMsg);
+  } catch {}
+
+  abrirWhatsAppComTexto(paciente.whatsapp, textoMsg);
+
+  if (onShowToast) {
+    onShowToast(
+      'PDF Baixado com Sucesso!',
+      'O WhatsApp foi aberto. Basta arrastar ou anexar (📎) o PDF baixado nesta conversa.',
+      'info'
+    );
+  }
+}
+
+/**
+ * Compartilha o Relatório Geral de Desenvolvimento em PDF junto com o WhatsApp
+ */
+export async function enviarRelatorioDesenvolvimentoWhatsAppComPDF(
+  paciente: Paciente,
+  evolucoes: EvolucaoClinica[],
+  clinica: ConfiguracaoClinica,
+  opcoes?: OpcoesRelatorioDesenvolvimento,
+  onShowToast?: (title: string, msg?: string, type?: 'success' | 'error' | 'info') => void
+): Promise<void> {
+  const doc = gerarRelatorioDesenvolvimentoGeralPDF(paciente, evolucoes, clinica, opcoes);
+  const nomeSanitizado = paciente.nome.replace(/[^a-zA-Z0-9]/g, '_');
+  const nomeArquivo = `Relatorio_Desenvolvimento_${nomeSanitizado}.pdf`;
+  const primeiroNome = paciente.nome.split(' ')[0];
+
+  const textoMsg = `🌿 *${clinica.nomeClinica}*
+*Relatório Geral de Desenvolvimento & Acompanhamento*
+
+Olá, *${primeiroNome}*! Tudo bem?
+Segue em anexo o seu *Relatório Completo de Desenvolvimento (PDF)* com todo o histórico e evolução das suas sessões.
+
+📄 No relatório em anexo você confere os comparativos visuais, evolução das queixas e a síntese terapêutica do seu tratamento.
+
+Muito obrigada pela dedicação e confiança! ✨`;
+
+  try {
+    const pdfBlob = doc.output('blob');
+    const pdfFile = new File([pdfBlob], nomeArquivo, { type: 'application/pdf' });
+
+    if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+      await navigator.share({
+        title: `Relatório de Desenvolvimento - ${paciente.nome}`,
+        text: textoMsg,
+        files: [pdfFile],
+      });
+      if (onShowToast) {
+        onShowToast('Relatório Compartilhado!', 'PDF de desenvolvimento enviado com sucesso.', 'success');
+      }
+      return;
+    }
+  } catch (err: any) {
+    if (err?.name === 'AbortError') return;
+    console.warn('Web Share indisponível:', err);
+  }
+
+  doc.save(nomeArquivo);
+  try {
+    await navigator.clipboard.writeText(textoMsg);
+  } catch {}
+  abrirWhatsAppComTexto(paciente.whatsapp, textoMsg);
+
+  if (onShowToast) {
+    onShowToast(
+      'PDF do Relatório Baixado!',
+      'O WhatsApp foi aberto. Basta arrastar ou anexar (📎) o PDF na conversa da paciente.',
+      'info'
+    );
+  }
 }
