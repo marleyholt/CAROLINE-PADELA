@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Agendamento,
   ConfiguracaoClinica,
@@ -116,7 +116,7 @@ export default function App() {
   // Toast Notifications (Desaparece automaticamente após 3 segundos)
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const showToast = (title: string, message: string = '', type: 'success' | 'error' | 'info' = 'info') => {
+  const showToast = useCallback((title: string, message: string = '', type: 'success' | 'error' | 'info' = 'info') => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     setToasts((prev) => [...prev, { id, title, message, type }]);
 
@@ -124,11 +124,11 @@ export default function App() {
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 3000);
-  };
+  }, []);
 
-  const dismissToast = (id: string) => {
+  const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
+  }, []);
 
   // 1. Subscribe to Firebase Auth
   useEffect(() => {
@@ -144,39 +144,48 @@ export default function App() {
         const userEmail = (user.email || '').toLowerCase().trim();
 
         if (isMasterEmail(userEmail)) {
-          const masterUser: UsuarioTerapeuta = {
-            id: user.uid || 'master-user',
-            nome: userEmail === TEST_MASTER_EMAIL ? 'Administrador Master (Testes)' : (user.displayName || 'Usuário Master'),
-            email: userEmail,
-            role: 'master',
-            ativo: true,
-            permissoes: {
-              agendamentos: true,
-              pacientes: true,
-              financeiro: true,
-              procedimentos: true,
-              configuracoes: true,
-            },
-            criadoEm: new Date().toISOString(),
-          };
-          setCurrentTerapeuta(masterUser);
+          setCurrentTerapeuta((prev) => {
+            if (prev?.email === userEmail && prev?.role === 'master') {
+              return prev;
+            }
+            return {
+              id: user.uid || 'master-user',
+              nome: userEmail === TEST_MASTER_EMAIL ? 'Administrador Master (Testes)' : (user.displayName || 'Usuário Master'),
+              email: userEmail,
+              role: 'master',
+              ativo: true,
+              permissoes: {
+                agendamentos: true,
+                pacientes: true,
+                financeiro: true,
+                procedimentos: true,
+                configuracoes: true,
+              },
+              criadoEm: new Date().toISOString(),
+            };
+          });
         } else {
-          const found = usuariosAcesso.find((u) => u.email.toLowerCase().trim() === userEmail);
-          if (found && found.ativo) {
-            setCurrentTerapeuta(found);
-          }
+          // Checa na lista atual sem disparar re-render circular
+          setUsuariosAcesso((currentList) => {
+            const found = currentList.find((u) => u.email.toLowerCase().trim() === userEmail);
+            if (found && found.ativo) {
+              setCurrentTerapeuta((prev) => (prev?.id === found.id ? prev : found));
+            }
+            return currentList;
+          });
         }
       } else {
-        // Keep currentTerapeuta if established by local master test session
-        if (currentTerapeuta?.role !== 'master') {
-          setCurrentTerapeuta(null);
+        // Se usuário deslogou do Firebase
+        setCurrentTerapeuta((prev) => {
+          if (prev?.role === 'master') return prev;
           setIsGoogleConnected(false);
-        }
+          return null;
+        });
       }
     });
 
     return () => unsubAuth();
-  }, [usuariosAcesso, currentTerapeuta]);
+  }, []);
 
   // 2. Real-time Firebase Public Sync (Agendamentos, Procedimentos, Configs)
   useEffect(() => {
@@ -204,11 +213,7 @@ export default function App() {
     });
 
     const unsubProcedimentos = subscribeProcedimentos((items) => {
-      if (items.length === 0 && procedimentos.length > 0) {
-        if (firebaseUser) {
-          procedimentos.forEach((p) => saveProcedimentoFirestore(p));
-        }
-      } else if (items.length > 0) {
+      if (items.length > 0) {
         setProcedimentos(items);
         StorageService.saveProcedimentos(items);
       }
@@ -220,7 +225,7 @@ export default function App() {
       unsubAgendamentos();
       unsubProcedimentos();
     };
-  }, [firebaseUser]);
+  }, []);
 
   // 3. Real-time Authenticated CRM Sync (Pacientes, Evoluções, Financeiro, Usuários, Pacotes)
   useEffect(() => {

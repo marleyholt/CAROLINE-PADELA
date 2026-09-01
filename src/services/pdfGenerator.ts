@@ -3,91 +3,103 @@ import { ConfiguracaoClinica, EvolucaoClinica, Paciente } from '../types';
 import { formatarDataBR } from '../utils/dateUtils';
 
 /**
- * Gera a imagem em alta resolução da assinatura manuscrita oficial da terapeuta (conforme Imagem 2)
+ * Gera a imagem em alta resolução da assinatura manuscrita oficial da terapeuta idêntica à imagem
  */
 function gerarAssinaturaManuscritaDataUrl(nomeTerapeuta: string = 'Caroline Padela'): string {
   try {
     const canvas = document.createElement('canvas');
-    canvas.width = 600;
-    canvas.height = 180;
+    canvas.width = 1000;
+    canvas.height = 360;
     const ctx = canvas.getContext('2d');
     if (!ctx) return '';
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Cor da tinta da caneta (preto/carvão fluido elegante)
-    ctx.strokeStyle = '#181f1b';
-    ctx.fillStyle = '#181f1b';
-    ctx.lineWidth = 2.8;
+    // Configurações de traço fluido da caneta tinteiro
+    ctx.strokeStyle = '#111613';
+    ctx.fillStyle = '#111613';
+    ctx.lineWidth = 3.6;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // Desenho vetorial da assinatura "Caroline Padela" em traços orgânicos
-    // Letra C maiúscula com laço superior
+    // -------------------------------------------------------------
+    // "Caroline" (Caligrafia cursiva fluida)
+    // -------------------------------------------------------------
+    // Letra C maiúscula elegante com laço superior característico
     ctx.beginPath();
-    ctx.moveTo(130, 80);
-    ctx.bezierCurveTo(115, 60, 100, 35, 125, 25);
-    ctx.bezierCurveTo(145, 18, 165, 30, 160, 55);
-    ctx.bezierCurveTo(155, 80, 115, 95, 105, 98);
-    ctx.bezierCurveTo(95, 102, 105, 115, 125, 112);
-    ctx.bezierCurveTo(140, 110, 150, 100, 158, 92);
+    ctx.moveTo(175, 125);
+    ctx.bezierCurveTo(155, 95, 140, 55, 185, 40);
+    ctx.bezierCurveTo(220, 30, 245, 48, 235, 85);
+    ctx.bezierCurveTo(225, 125, 170, 145, 155, 150);
+    ctx.bezierCurveTo(140, 155, 150, 172, 180, 168);
+    ctx.bezierCurveTo(200, 165, 218, 152, 230, 140);
     ctx.stroke();
 
-    // "aroline"
+    // "a"
     ctx.beginPath();
-    ctx.moveTo(158, 92);
-    // a
-    ctx.bezierCurveTo(168, 80, 178, 82, 174, 98);
-    ctx.bezierCurveTo(170, 108, 185, 106, 188, 92);
-    // r
-    ctx.bezierCurveTo(192, 82, 200, 82, 202, 94);
-    // o
-    ctx.bezierCurveTo(208, 82, 220, 82, 218, 98);
-    ctx.bezierCurveTo(216, 108, 226, 94, 230, 90);
-    // l
-    ctx.bezierCurveTo(238, 55, 245, 40, 246, 38);
-    ctx.bezierCurveTo(248, 35, 242, 50, 240, 102);
-    // i
-    ctx.bezierCurveTo(245, 90, 254, 88, 255, 100);
-    // n
-    ctx.bezierCurveTo(260, 88, 268, 88, 268, 100);
-    ctx.bezierCurveTo(272, 88, 280, 88, 282, 98);
-    // e
-    ctx.bezierCurveTo(288, 88, 298, 88, 295, 102);
+    ctx.moveTo(230, 140);
+    ctx.bezierCurveTo(242, 124, 256, 126, 252, 148);
+    ctx.bezierCurveTo(248, 162, 268, 160, 272, 140);
+    // "r"
+    ctx.bezierCurveTo(278, 126, 288, 126, 292, 142);
+    // "o"
+    ctx.bezierCurveTo(300, 126, 318, 126, 314, 148);
+    ctx.bezierCurveTo(310, 162, 324, 142, 330, 136);
+    // "l" (haste alta curvada)
+    ctx.bezierCurveTo(342, 85, 352, 60, 355, 58);
+    ctx.bezierCurveTo(358, 55, 348, 75, 346, 154);
+    // "i"
+    ctx.bezierCurveTo(352, 136, 365, 134, 368, 150);
+    // "n"
+    ctx.bezierCurveTo(374, 134, 385, 134, 386, 150);
+    ctx.bezierCurveTo(392, 134, 404, 134, 406, 148);
+    // "e"
+    ctx.bezierCurveTo(414, 134, 428, 134, 424, 152);
     ctx.stroke();
 
-    // Pingo no i
+    // Pingo no "i"
     ctx.beginPath();
-    ctx.arc(252, 74, 2.2, 0, Math.PI * 2);
+    ctx.arc(364, 114, 3, 0, Math.PI * 2);
     ctx.fill();
 
-    // "Padela" com P maiúsculo cursivo que cruza para baixo da linha
+    // -------------------------------------------------------------
+    // "Padela" com a descida longa e marcante do "P"
+    // -------------------------------------------------------------
+    // Laço superior do P
     ctx.beginPath();
-    // Traço descendente elegante do P
-    ctx.moveTo(330, 32);
-    ctx.bezierCurveTo(320, 50, 310, 100, 290, 165);
+    ctx.moveTo(435, 78);
+    ctx.bezierCurveTo(465, 48, 520, 52, 510, 95);
+    ctx.bezierCurveTo(500, 138, 440, 138, 432, 130);
     ctx.stroke();
 
-    // Bojo do P
+    // Traço descendente longo e expressivo do P que cruza a linha verde
     ctx.beginPath();
-    ctx.moveTo(318, 40);
-    ctx.bezierCurveTo(345, 20, 385, 30, 375, 65);
-    ctx.bezierCurveTo(365, 95, 315, 95, 308, 90);
-    // a
-    ctx.bezierCurveTo(320, 78, 332, 80, 328, 96);
-    ctx.bezierCurveTo(324, 108, 338, 104, 342, 90);
-    // d (com haste alta)
-    ctx.bezierCurveTo(350, 78, 360, 80, 356, 96);
-    ctx.bezierCurveTo(360, 60, 368, 42, 368, 40);
-    ctx.bezierCurveTo(368, 55, 362, 90, 368, 102);
-    // e
-    ctx.bezierCurveTo(376, 88, 388, 88, 384, 100);
-    // l
-    ctx.bezierCurveTo(392, 55, 400, 40, 402, 38);
-    ctx.bezierCurveTo(404, 42, 396, 75, 400, 102);
-    // a final com cauda fluida
-    ctx.bezierCurveTo(408, 88, 420, 88, 418, 98);
-    ctx.bezierCurveTo(416, 106, 428, 102, 445, 94);
+    ctx.lineWidth = 4.2;
+    ctx.moveTo(468, 55);
+    ctx.bezierCurveTo(458, 115, 438, 195, 416, 255);
+    ctx.stroke();
+
+    // Reset largura de traço para as demais letras de "adela"
+    ctx.lineWidth = 3.6;
+
+    // "adela"
+    ctx.beginPath();
+    ctx.moveTo(442, 134);
+    // "a"
+    ctx.bezierCurveTo(454, 120, 470, 122, 465, 146);
+    ctx.bezierCurveTo(460, 162, 480, 156, 484, 136);
+    // "d" com haste alta
+    ctx.bezierCurveTo(494, 120, 508, 122, 504, 146);
+    ctx.bezierCurveTo(510, 95, 520, 68, 522, 65);
+    ctx.bezierCurveTo(524, 68, 514, 120, 520, 154);
+    // "e"
+    ctx.bezierCurveTo(530, 134, 545, 134, 540, 150);
+    // "l" com haste alta
+    ctx.bezierCurveTo(550, 85, 560, 62, 562, 60);
+    ctx.bezierCurveTo(564, 65, 554, 115, 558, 154);
+    // "a" final com cauda fluida estendida
+    ctx.bezierCurveTo(568, 134, 584, 134, 580, 148);
+    ctx.bezierCurveTo(578, 160, 594, 156, 625, 146);
     ctx.stroke();
 
     return canvas.toDataURL('image/png');
@@ -164,18 +176,28 @@ function desenharCabecalhoOficial(doc: jsPDF, pageWidth: number, clinica: Config
     doc.text('L I B E R A Ç Ã O   M I O F A S C I A L', 11.5, 23.5);
   }
 
-  // 3. Informações de Contato à Direita no Cabeçalho Preto
+  // 3. Informações de Contato à Direita no Cabeçalho Preto (Telefone, E-mail, Instagram)
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9.5);
-  const telefone = clinica.telefone || clinica.whatsapp || '(21) 97513-4597';
-  doc.text(telefone, pageWidth - 14, 14, { align: 'right' });
+  doc.setFontSize(8.5);
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9.5);
-  doc.setTextColor(255, 255, 255);
-  const social = clinica.email && clinica.email.includes('@') ? clinica.email : '@carolpadela';
-  doc.text(social, pageWidth - 14, 19.5, { align: 'right' });
+  const telefone = (clinica.telefone || clinica.whatsapp || '(21) 97513-4597').trim();
+  const email = (clinica.email || 'contato@carolinepadela.com.br').trim();
+  const rawInsta = (clinica.instagram || '@carolpadela').trim();
+  const instagram = rawInsta ? (rawInsta.startsWith('@') ? rawInsta : `@${rawInsta}`) : '';
+
+  let currentY = 10.5;
+  if (telefone) {
+    doc.text(telefone, pageWidth - 14, currentY, { align: 'right' });
+    currentY += 5.5;
+  }
+  if (email) {
+    doc.text(email, pageWidth - 14, currentY, { align: 'right' });
+    currentY += 5.5;
+  }
+  if (instagram) {
+    doc.text(instagram, pageWidth - 14, currentY, { align: 'right' });
+  }
 }
 
 /**
@@ -201,49 +223,84 @@ function desenharFaixaTitulo(doc: jsPDF, pageWidth: number, y: number, linha1: s
 }
 
 /**
- * Desenha o rodapé oficial com assinatura da terapeuta idêntico à Imagem 2
+ * Converte cor hexadecimal (#RRGGBB) para valores RGB numéricos
+ */
+function hexToRgb(hex?: string): [number, number, number] {
+  if (!hex) return [237, 241, 235]; // Padrão sálvia suave #EDF1EB
+  let clean = hex.replace('#', '').trim();
+  if (clean.length === 3) {
+    clean = clean.split('').map((c) => c + c).join('');
+  }
+  if (clean.length !== 6) {
+    return [237, 241, 235];
+  }
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  return [isNaN(r) ? 237 : r, isNaN(g) ? 241 : g, isNaN(b) ? 235 : b];
+}
+
+/**
+ * Desenha o rodapé oficial com assinatura da terapeuta idêntico à imagem enviada ou usando imagem enviada pelo usuário
  */
 function desenharRodapeOficial(doc: jsPDF, pageWidth: number, pageHeight: number, clinica: ConfiguracaoClinica) {
-  const rodapeHeight = 32;
+  const rodapeHeight = 34;
   const rodapeY = pageHeight - rodapeHeight;
 
-  // Fundo bege acinzentado / sálvia suave (#E6EBE4)
-  doc.setFillColor(230, 235, 228);
+  // Cor de fundo do rodapé: atualizada para coincidir com a cor de fundo da imagem de assinatura enviada
+  const [bgR, bgG, bgB] = hexToRgb(clinica.assinaturaBgColor || '#EDF1EB');
+  doc.setFillColor(bgR, bgG, bgB);
   doc.rect(0, rodapeY, pageWidth, rodapeHeight, 'F');
 
   const centerX = pageWidth / 2;
-  const lineY = rodapeY + 16.5;
+  const lineY = rodapeY + 17;
 
-  // Linha horizontal sutil verde sálvia (#A3B3A0) cruzando a assinatura
-  doc.setDrawColor(163, 179, 160);
-  doc.setLineWidth(0.45);
-  doc.line(centerX - 55, lineY, centerX + 55, lineY);
+  // Se o usuário enviou uma imagem de assinatura personalizada nas configurações
+  if (clinica.assinaturaUrl) {
+    try {
+      const imgWidth = 86;
+      const imgHeight = 28;
+      const imgX = centerX - (imgWidth / 2);
+      const imgY = rodapeY + (rodapeHeight - imgHeight) / 2;
+      const format = clinica.assinaturaUrl.includes('image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(clinica.assinaturaUrl, format, imgX, imgY, imgWidth, imgHeight);
+      return;
+    } catch (err) {
+      console.warn('Erro ao inserir imagem de assinatura no PDF:', err);
+    }
+  }
+
+  // Se não houver imagem personalizada enviada, usa o layout padrão idêntico à imagem enviada
+  // Linha horizontal verde sálvia (#8FA393) cruzando a assinatura
+  doc.setDrawColor(143, 163, 147);
+  doc.setLineWidth(0.48);
+  doc.line(centerX - 62, lineY, centerX + 62, lineY);
 
   // Assinatura manuscrita fluida (vetorial / canvas de alta definição)
   const assinaturaDataUrl = gerarAssinaturaManuscritaDataUrl(clinica.nomeTerapeuta || 'Caroline Padela');
   if (assinaturaDataUrl) {
     try {
-      // Estampa a assinatura centralizada exatamente sobre a linha
-      doc.addImage(assinaturaDataUrl, 'PNG', centerX - 32, lineY - 14, 64, 18);
+      // Estampa a assinatura centralizada exatamente sobre a linha conforme a imagem
+      doc.addImage(assinaturaDataUrl, 'PNG', centerX - 36, lineY - 15, 72, 22);
     } catch {
       // Fallback tipográfico
-      doc.setTextColor(24, 31, 27);
+      doc.setTextColor(17, 22, 19);
       doc.setFont('times', 'italic');
       doc.setFontSize(21);
       doc.text(clinica.nomeTerapeuta || 'Caroline Padela', centerX, lineY - 1, { align: 'center' });
     }
   } else {
-    doc.setTextColor(24, 31, 27);
+    doc.setTextColor(17, 22, 19);
     doc.setFont('times', 'italic');
     doc.setFontSize(21);
     doc.text(clinica.nomeTerapeuta || 'Caroline Padela', centerX, lineY - 1, { align: 'center' });
   }
 
-  // Nome impresso limpo em itálico sálvia escuro embaixo da linha (conforme Imagem 2)
+  // Nome impresso limpo em sálvia escuro embaixo da linha (idêntico à imagem)
   doc.setFont('helvetica', 'italic');
-  doc.setFontSize(9.5);
-  doc.setTextColor(94, 111, 90);
-  doc.text(clinica.nomeTerapeuta || 'Caroline Padela', centerX, lineY + 6.2, { align: 'center' });
+  doc.setFontSize(10.5);
+  doc.setTextColor(93, 124, 113);
+  doc.text(clinica.nomeTerapeuta || 'Caroline Padela', centerX, lineY + 6.8, { align: 'center' });
 }
 
 /**
@@ -303,8 +360,8 @@ export function gerarRelatorioEvolucaoPDFNodes(
   const margin = 18;
   const contentWidth = pageWidth - margin * 2;
 
-  // 1. Marca d'água de fundo
-  desenharMarcaDagua(doc, pageWidth, pageHeight, clinica);
+  // 1. Marca d'água removida para manter fundo limpo e alta legibilidade
+  // desenharMarcaDagua desativada a pedido
 
   // 2. Cabeçalho oficial preto
   desenharCabecalhoOficial(doc, pageWidth, clinica);
@@ -432,8 +489,8 @@ export function gerarRelatorioDesenvolvimentoGeralPDF(
   const margin = 18;
   const contentWidth = pageWidth - margin * 2;
 
-  // 1. Marca d'água
-  desenharMarcaDagua(doc, pageWidth, pageHeight, clinica);
+  // 1. Marca d'água removida para manter fundo limpo e alta legibilidade
+  // desenharMarcaDagua desativada a pedido
 
   // 2. Cabeçalho oficial preto
   desenharCabecalhoOficial(doc, pageWidth, clinica);
@@ -598,8 +655,8 @@ Muito obrigada pela confiança e cuide-se bem! Qualquer dúvida ou sensação di
 
 export function abrirWhatsAppComTexto(telefone: string, mensagem: string): void {
   const cleanPhone = telefone.replace(/\D/g, '');
-  const finalPhone到位 = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+  const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
   const encodedMsg = encodeURIComponent(mensagem);
-  const url = `https://wa.me/${finalPhone到位}?text=${encodedMsg}`;
+  const url = `https://wa.me/${finalPhone}?text=${encodedMsg}`;
   window.open(url, '_blank', 'noopener,noreferrer');
 }

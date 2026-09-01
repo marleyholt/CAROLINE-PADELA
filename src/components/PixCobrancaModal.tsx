@@ -37,7 +37,7 @@ export const PixCobrancaModal: React.FC<PixCobrancaModalProps> = ({
   onConfirmarPagamento,
   onShowToast,
 }) => {
-  const activeConfig = configInfinitePay || configInter || {
+  const activeConfig = React.useMemo(() => configInfinitePay || configInter || {
     chavePix: '5521975134597',
     tipoChavePix: 'telefone',
     nomeTitular: 'CAROLINE PADELA',
@@ -47,7 +47,7 @@ export const PixCobrancaModal: React.FC<PixCobrancaModalProps> = ({
     apiKey: '',
     ambiente: 'producao',
     webhookAtivo: true,
-  };
+  }, [configInfinitePay, configInter]);
 
   const [cobranca, setCobranca] = useState<InfinitePayCobrancaPixResult | null>(null);
   const [copied, setCopied] = useState(false);
@@ -57,6 +57,7 @@ export const PixCobrancaModal: React.FC<PixCobrancaModalProps> = ({
   const [confirmando, setConfirmando] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
     async function loadPix() {
       setLoading(true);
       const res = await emitirCobrancaSinalInfinitePay(
@@ -65,11 +66,16 @@ export const PixCobrancaModal: React.FC<PixCobrancaModalProps> = ({
         agendamento.procedimentoNome,
         activeConfig
       );
-      setCobranca(res);
-      setLoading(false);
+      if (isMounted) {
+        setCobranca(res);
+        setLoading(false);
+      }
     }
     loadPix();
-  }, [agendamento, activeConfig]);
+    return () => {
+      isMounted = false;
+    };
+  }, [agendamento.id, agendamento.valorSinal, agendamento.pacienteNome, agendamento.procedimentoNome, activeConfig]);
 
   const handleCopyPix = () => {
     if (!cobranca?.pixCopiaECola) return;

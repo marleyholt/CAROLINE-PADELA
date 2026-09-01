@@ -15,6 +15,8 @@ import {
   ShieldCheck,
   AlertCircle,
   Zap,
+  PenTool,
+  Palette,
 } from 'lucide-react';
 import { ConfiguracaoClinica, ConfiguracaoInfinitePay } from '../types';
 import { emitirCobrancaSinalInfinitePay } from '../services/infinitePay';
@@ -63,6 +65,48 @@ export const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
   const [testandoPix, setTestandoPix] = useState(false);
   const [sincronizandoTudo, setSincronizandoTudo] = useState(false);
   const [resultadoTestePix, setResultadoTestePix] = useState<string | null>(null);
+
+  // Extrai a cor de fundo da imagem da assinatura para coincidir o fundo do rodapé do PDF
+  const extrairCorFundoImagem = (dataUrl: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new window.Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || img.width || 100;
+          canvas.height = img.naturalHeight || img.height || 100;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve('#EDF1EB');
+            return;
+          }
+          ctx.drawImage(img, 0, 0);
+          // Amostra cantos e bordas superiores para identificar o fundo exato
+          const p1 = ctx.getImageData(3, 3, 1, 1).data;
+          const p2 = ctx.getImageData(Math.max(0, canvas.width - 4), 3, 1, 1).data;
+          const p3 = ctx.getImageData(3, Math.max(0, canvas.height - 4), 1, 1).data;
+
+          // Se a imagem for transparente, usa o sálvia suave padrão
+          if (p1[3] < 40 && p2[3] < 40) {
+            resolve('#EDF1EB');
+            return;
+          }
+
+          const r = Math.round((p1[0] + p2[0] + p3[0]) / 3);
+          const g = Math.round((p1[1] + p2[1] + p3[1]) / 3);
+          const b = Math.round((p1[2] + p2[2] + p3[2]) / 3);
+
+          const hex = '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('');
+          resolve(hex);
+        } catch {
+          resolve('#EDF1EB');
+        }
+      };
+      img.onerror = () => resolve('#EDF1EB');
+      img.src = dataUrl;
+    });
+  };
 
   const handleSalvarTudo = (e: React.FormEvent) => {
     e.preventDefault();
@@ -421,6 +465,126 @@ export const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
             </div>
           </div>
 
+          {/* Campo de Upload de Imagem de Assinatura para o PDF */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-24 h-14 rounded-lg border border-slate-300 flex items-center justify-center overflow-hidden shrink-0 shadow-inner p-1"
+                  style={{ backgroundColor: clinica.assinaturaBgColor || '#EDF1EB' }}
+                >
+                  {clinica.assinaturaUrl ? (
+                    <img
+                      src={clinica.assinaturaUrl}
+                      alt="Assinatura da Terapeuta"
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  ) : (
+                    <div className="text-center text-slate-500">
+                      <PenTool className="w-5 h-5 mx-auto opacity-70" />
+                      <span className="text-[8px] font-semibold block leading-none mt-1">Padrão Oficial</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <PenTool className="w-3.5 h-3.5 text-emerald-600" />
+                      Imagem de Assinatura Oficial (Rodapé do PDF)
+                    </h4>
+                    {clinica.assinaturaUrl && (
+                      <span className="text-[9px] font-bold uppercase bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-mono border border-emerald-200">
+                        Ativa no PDF
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 max-w-lg mt-0.5">
+                    Envie a imagem da sua assinatura para estampar no rodapé de todos os relatórios clínicos. O sistema detecta automaticamente a cor de fundo da sua imagem para pintar a faixa do PDF no tom correspondente.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                <label className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-semibold cursor-pointer shadow-2xs transition-colors flex items-center gap-1.5">
+                  <PenTool className="w-3.5 h-3.5" />
+                  <span>{clinica.assinaturaUrl ? 'Alterar Assinatura' : 'Fazer Upload de Assinatura'}</span>
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        if (file.size > 2 * 1024 * 1024) {
+                          onShowToast('Arquivo muito grande', 'Por favor escolha uma imagem de até 2MB.', 'error');
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = async (event) => {
+                          const base64 = event.target?.result as string;
+                          const bgColor = await extrairCorFundoImagem(base64);
+                          setClinica((prev) => ({
+                            ...prev,
+                            assinaturaUrl: base64,
+                            assinaturaBgColor: bgColor,
+                          }));
+                          onShowToast('Assinatura e Fundo Carregados!', `Cor de fundo detectada: ${bgColor.toUpperCase()}.`, 'success');
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
+
+                {clinica.assinaturaUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClinica((prev) => ({
+                        ...prev,
+                        assinaturaUrl: '',
+                        assinaturaBgColor: '#EDF1EB',
+                      }));
+                      onShowToast('Assinatura Redefinida', 'O rodapé voltará à assinatura caligráfica padrão.', 'info');
+                    }}
+                    className="px-2.5 py-1.5 bg-slate-200 hover:bg-rose-100 hover:text-rose-700 text-slate-700 rounded-md text-xs font-medium transition-colors"
+                  >
+                    Restaurar Padrão
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Controle de Cor de Fundo do Rodapé */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/80 text-xs">
+              <div className="flex items-center gap-2">
+                <Palette className="w-3.5 h-3.5 text-slate-500" />
+                <span className="text-[11px] font-semibold text-slate-700">Cor de Fundo da Faixa no PDF:</span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="color"
+                    value={clinica.assinaturaBgColor || '#EDF1EB'}
+                    onChange={(e) => setClinica({ ...clinica, assinaturaBgColor: e.target.value })}
+                    className="w-6 h-6 rounded border border-slate-300 cursor-pointer p-0"
+                    title="Ajustar cor de fundo da assinatura"
+                  />
+                  <input
+                    type="text"
+                    value={clinica.assinaturaBgColor || '#EDF1EB'}
+                    onChange={(e) => setClinica({ ...clinica, assinaturaBgColor: e.target.value })}
+                    className="w-20 px-1.5 py-0.5 rounded border border-slate-200 text-[11px] font-mono uppercase bg-white text-slate-800"
+                    placeholder="#EDF1EB"
+                  />
+                </div>
+              </div>
+
+              <div className="text-[10px] text-slate-500">
+                {clinica.assinaturaUrl ? '✓ Fundo sincronizado com a imagem enviada' : 'Fundo padrão sálvia suave (#EDF1EB)'}
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
             <div>
               <label className="font-semibold text-[11px] text-slate-700 block mb-1">Nome do Consultório / Espaço *</label>
@@ -467,7 +631,48 @@ export const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
             </div>
 
             <div>
-              <label className="font-semibold text-[11px] text-slate-700 block mb-1">WhatsApp de Atendimento *</label>
+              <label className="font-semibold text-[11px] text-slate-700 block mb-1">
+                Telefone (Aparece no PDF) *
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="(21) 97513-4597"
+                value={clinica.telefone}
+                onChange={(e) => setClinica({ ...clinica, telefone: e.target.value })}
+                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-[11px] text-slate-700 block mb-1">
+                E-mail Profissional (Aparece no PDF) *
+              </label>
+              <input
+                type="email"
+                required
+                placeholder="contato@carolinepadela.com.br"
+                value={clinica.email}
+                onChange={(e) => setClinica({ ...clinica, email: e.target.value })}
+                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-[11px] text-slate-700 block mb-1">
+                Instagram (Aparece no PDF)
+              </label>
+              <input
+                type="text"
+                placeholder="@carolpadela"
+                value={clinica.instagram || ''}
+                onChange={(e) => setClinica({ ...clinica, instagram: e.target.value })}
+                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold text-emerald-800"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-[11px] text-slate-700 block mb-1">WhatsApp de Atendimento (Envio Automático) *</label>
               <input
                 type="text"
                 required

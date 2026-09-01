@@ -30,10 +30,13 @@ export const DEFAULT_CLINICA: ConfiguracaoClinica = {
   whatsapp: '5521975134597',
   email: 'contato@carolinepadela.com.br',
   telefone: '(21) 97513-4597',
+  instagram: '@carolpadela',
   endereco: 'R. Barão de Inoa, 58 - Sobreloja - Centro',
   cidadeUf: 'Maricá - RJ',
   cnpjCpf: '',
   logoUrl: '',
+  assinaturaUrl: '',
+  assinaturaBgColor: '#EDF1EB',
   textoMarcaDagua: 'CAROLINE PADELA • LIBERAÇÃO MIOFASCIAL & MASSOTERAPIA',
   mensagemWhatsappPadrao: 'Olá {nome}! Aqui é a Caroline Padela. Segue o seu relatório de evolução da nossa sessão com as orientações de autocuidado. Qualquer dúvida estou à disposição!',
 };

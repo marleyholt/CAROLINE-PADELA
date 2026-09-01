@@ -183,10 +183,13 @@ export interface ConfiguracaoClinica {
   whatsapp: string;
   email: string;
   telefone: string;
+  instagram: string;
   endereco: string;
   cidadeUf: string;
   cnpjCpf: string;
   logoUrl: string;
+  assinaturaUrl?: string; // Imagem da assinatura para o rodapé do PDF
+  assinaturaBgColor?: string; // Cor de fundo extraída/definida para o rodapé do PDF (Ex: #EDF1EB)
   textoMarcaDagua: string;
   mensagemWhatsappPadrao: string;
 }
