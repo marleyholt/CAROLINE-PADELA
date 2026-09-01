@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { X, Calendar, Clock, User, Sparkles, QrCode, DollarSign } from 'lucide-react';
-import { Agendamento, Paciente, Procedimento, StatusPagamento } from '../types';
+import { X, Calendar, Clock, User, Sparkles, QrCode, DollarSign, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Agendamento, Paciente, Procedimento, StatusPagamento, ConfiguracaoClinica } from '../types';
+import { getDisponibilidadeParaData } from '../utils/dateUtils';
 
 interface NovoAgendamentoModalProps {
   isOpen?: boolean;
   pacientes: Paciente[];
   procedimentos: Procedimento[];
+  configClinica?: ConfiguracaoClinica;
   configInter?: any;
   onClose: () => void;
   onSalvar?: (agendamento: Agendamento, abrirPixImediato: boolean) => void;
@@ -16,6 +18,7 @@ interface NovoAgendamentoModalProps {
 export const NovoAgendamentoModal: React.FC<NovoAgendamentoModalProps> = ({
   pacientes,
   procedimentos,
+  configClinica,
   onClose,
   onSalvar,
   onCriarAgendamento,
@@ -36,6 +39,9 @@ export const NovoAgendamentoModal: React.FC<NovoAgendamentoModalProps> = ({
   const precoTotal = procSelecionado ? procSelecionado.precoTotal : 160;
   const valorSinal = procSelecionado ? procSelecionado.valorSinal : 80;
   const valorRestante = precoTotal - valorSinal;
+
+  // Calcula disponibilidade do dia selecionado
+  const disponibilidade = configClinica ? getDisponibilidadeParaData(data, configClinica) : null;
 
   const handleSubmit = (abrirPix: boolean) => {
     let finalPacNome = '';
@@ -175,25 +181,76 @@ export const NovoAgendamentoModal: React.FC<NovoAgendamentoModalProps> = ({
           </div>
 
           {/* Data & Horário */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] font-semibold text-slate-700 block mb-1">Data</label>
-              <input
-                type="date"
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs bg-slate-50 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">Data</label>
+                <input
+                  type="date"
+                  value={data}
+                  onChange={(e) => setData(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs bg-slate-50 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">Horário Selecionado</label>
+                <input
+                  type="time"
+                  value={horario}
+                  onChange={(e) => setHorario(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs bg-slate-50 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono font-bold text-slate-800"
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-[11px] font-semibold text-slate-700 block mb-1">Horário</label>
-              <input
-                type="time"
-                value={horario}
-                onChange={(e) => setHorario(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs bg-slate-50 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-            </div>
+
+            {/* Aviso de Exceção ou Grade Disponível para a Data */}
+            {disponibilidade && (
+              <div className="space-y-1.5">
+                {disponibilidade.isExcecao && disponibilidade.tipoExcecao === 'fechado' && (
+                  <div className="p-2 bg-amber-50 border border-amber-200 rounded-md text-[11px] text-amber-900 flex items-start gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold">Data com Fechamento Específico:</strong>
+                      <span>{disponibilidade.motivoExcecao}</span>
+                    </div>
+                  </div>
+                )}
+
+                {disponibilidade.isExcecao && disponibilidade.tipoExcecao === 'personalizado' && (
+                  <div className="p-2 bg-blue-50 border border-blue-200 rounded-md text-[11px] text-blue-900 flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold">Horários Específicos para este Dia:</strong>
+                      <span>{disponibilidade.motivoExcecao}</span>
+                    </div>
+                  </div>
+                )}
+
+                {disponibilidade.horarios.length > 0 && (
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-500 block mb-1">
+                      Horários cadastrados na grade da terapeuta (clique para preencher):
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {disponibilidade.horarios.map((hr) => (
+                        <button
+                          key={hr}
+                          type="button"
+                          onClick={() => setHorario(hr)}
+                          className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-all cursor-pointer ${
+                            horario === hr
+                              ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {hr}h
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Pricing Highlight */}

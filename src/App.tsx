@@ -522,8 +522,13 @@ export default function App() {
       }
     }
 
-    // 2. Salvar o agendamento no Firestore / Storage
-    await saveAgendamentoFirestore(agendamentoFinal);
+    // 2. Salvar o agendamento no Estado Local, Storage e Firestore
+    const listaAgendamentos = [agendamentoFinal, ...agendamentos.filter((a) => a.id !== agendamentoFinal.id)];
+    setAgendamentos(listaAgendamentos);
+    StorageService.saveAgendamentos(listaAgendamentos);
+    if (firebaseUser) {
+      await saveAgendamentoFirestore(agendamentoFinal);
+    }
 
     // 3. Inserir uma nova sessão (Evolução / Prontuário) com marcação de "Pendente de Relatório / Ainda vai acontecer"
     const novaSessaoPendente: EvolucaoClinica = {
@@ -1178,6 +1183,7 @@ export default function App() {
           onClose={() => setModalNovoAgendamento(false)}
           procedimentos={procedimentos}
           pacientes={pacientes}
+          configClinica={clinica}
           configInter={inter}
           onCriarAgendamento={handleCriarAgendamento}
           onShowToast={showToast}

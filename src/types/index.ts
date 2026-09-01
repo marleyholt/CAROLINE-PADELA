@@ -186,6 +186,14 @@ export interface TransacaoFinanceira {
   criadoEm: string;
 }
 
+export interface ExcecaoDataDisponibilidade {
+  id: string;
+  data: string; // YYYY-MM-DD (ex: "2026-08-18")
+  tipo: 'fechado' | 'personalizado'; // 'fechado' = data bloqueada/fechada; 'personalizado' = horários específicos nesta data (ex: apenas à tarde)
+  horarios?: string[]; // Horários específicos para esta data (ex: ['13:30', '14:45', '16:00', '17:15'])
+  motivo?: string; // Motivo opcional (ex: "Manhã fechada - Atendimento apenas à tarde", "Folga", "Curso")
+}
+
 export interface ConfiguracaoClinica {
   nomeClinica: string;
   nomeTerapeuta: string;
@@ -207,6 +215,7 @@ export interface ConfiguracaoClinica {
   diasSemanaDisponiveis?: number[]; // [0, 1, 2, 3, 4, 5, 6] onde 0=Dom, 1=Seg, ..., 6=Sáb
   horariosDisponiveis?: string[]; // Ex: ['08:30', '09:45', '11:00', '13:30', '14:45', '16:00', '17:15', '18:30', '19:45']
   intervaloMinutos?: number; // Ex: 75 minutos por atendimento
+  excecoesDias?: ExcecaoDataDisponibilidade[]; // Configuração específica para datas selecionadas (bloqueio total ou horário diferenciado por dia)
 }
 
 export interface ConfiguracaoInfinitePay {

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Clock,
   CheckCircle2,
+  AlertCircle,
   QrCode,
   CreditCard,
   Send,
@@ -28,7 +29,7 @@ import {
   InfinitePayCobrancaPixResult,
 } from '../services/infinitePay';
 import { abrirWhatsAppComTexto } from '../services/pdfGenerator';
-import { formatarDataBR } from '../utils/dateUtils';
+import { formatarDataBR, getDisponibilidadeParaData } from '../utils/dateUtils';
 
 interface PortalPacienteViewProps {
   procedimentos: Procedimento[];
@@ -107,12 +108,16 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
   const [salvando, setSalvando] = useState(false);
   const [loadingCheckout, setLoadingCheckout] = useState(false);
 
-  // Horários e Dias configurados pela terapeuta
-  const horariosDisponiveis = (configClinica.horariosDisponiveis && configClinica.horariosDisponiveis.length > 0)
-    ? configClinica.horariosDisponiveis
-    : HORARIOS_DISPONIVEIS;
+  // Horários e Disponibilidade dinâmicos para a data selecionada (respeitando exceções e semana padrão)
+  const disponibilidade = getDisponibilidadeParaData(selectedData, configClinica);
+  const horariosDisponiveis = disponibilidade.horarios;
 
-  const diasSemanaAtivos = configClinica.diasSemanaDisponiveis || [1, 2, 3, 4, 5, 6];
+  // Atualiza o horário selecionado se o atual não existir nos horários disponíveis do dia
+  useEffect(() => {
+    if (horariosDisponiveis.length > 0 && !horariosDisponiveis.includes(selectedHorario)) {
+      setSelectedHorario(horariosDisponiveis[0]);
+    }
+  }, [selectedData, horariosDisponiveis, selectedHorario]);
 
   // Ao entrar no Step 4 (Pagamento), gera Pix (50% sinal) e Link de Checkout Cartão (100% integral) InfinitePay
   useEffect(() => {
@@ -508,40 +513,73 @@ Poderiam por favor confirmar o agendamento? Aguardo ansioso(a)! ✨`;
                   />
                 </div>
 
-                {/* Horários Grid */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700 block">Horários Disponíveis da Terapeuta</label>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                    {horariosDisponiveis.map((hr) => {
-                      const isHrSelected = selectedHorario === hr;
-                      return (
-                        <button
-                          key={hr}
-                          onClick={() => setSelectedHorario(hr)}
-                          className={`py-2.5 px-2 rounded-xl text-xs sm:text-sm font-bold border font-mono transition-all min-h-[44px] touch-manipulation flex items-center justify-center cursor-pointer ${
-                            isHrSelected
-                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs scale-102'
-                              : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-300 active:bg-slate-50'
-                          }`}
-                        >
-                          {hr}h
-                        </button>
-                      );
-                    })}
+                {/* Avisos de Disponibilidade / Exceções */}
+                {disponibilidade.isExcecao && disponibilidade.tipoExcecao === 'fechado' && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold">Data Indisponível para Agendamento:</strong>
+                      <span>{disponibilidade.motivoExcecao}</span>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {disponibilidade.isExcecao && disponibilidade.tipoExcecao === 'personalizado' && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2">
+                    <Sparkles className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold">Grade Especial de Horários para este dia:</strong>
+                      <span>{disponibilidade.motivoExcecao}</span>
+                    </div>
+                  </div>
+                )}
+
+                {!disponibilidade.disponivel && !disponibilidade.isExcecao && (
+                  <div className="p-3 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-slate-500 shrink-0" />
+                    <span>A terapeuta não possui atendimento regular neste dia da semana. Por favor selecione outra data.</span>
+                  </div>
+                )}
+
+                {/* Horários Grid */}
+                {disponibilidade.disponivel && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700 block">Horários Disponíveis da Terapeuta</label>
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                      {horariosDisponiveis.map((hr) => {
+                        const isHrSelected = selectedHorario === hr;
+                        return (
+                          <button
+                            key={hr}
+                            onClick={() => setSelectedHorario(hr)}
+                            className={`py-2.5 px-2 rounded-xl text-xs sm:text-sm font-bold border font-mono transition-all min-h-[44px] touch-manipulation flex items-center justify-center cursor-pointer ${
+                              isHrSelected
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs scale-102'
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-300 active:bg-slate-50'
+                            }`}
+                          >
+                            {hr}h
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Resumo */}
-                <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-950">
-                  <span className="font-medium truncate mr-2">{selectedProc.nome} ({selectedProc.duracaoMinutos} min)</span>
-                  <span className="font-bold font-mono text-emerald-800 shrink-0">
-                    {formatarDataBR(selectedData)} às {selectedHorario}h
-                  </span>
-                </div>
+                {disponibilidade.disponivel && (
+                  <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-950">
+                    <span className="font-medium truncate mr-2">{selectedProc.nome} ({selectedProc.duracaoMinutos} min)</span>
+                    <span className="font-bold font-mono text-emerald-800 shrink-0">
+                      {formatarDataBR(selectedData)} às {selectedHorario}h
+                    </span>
+                  </div>
+                )}
 
                 <button
+                  disabled={!disponibilidade.disponivel || !selectedHorario}
                   onClick={() => setStep(3)}
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all flex items-center justify-center gap-2 min-h-[48px] touch-manipulation cursor-pointer"
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all flex items-center justify-center gap-2 min-h-[48px] touch-manipulation cursor-pointer disabled:opacity-50"
                 >
                   <span>Continuar para Seus Dados</span>
                   <ChevronRight className="w-4 h-4" />
