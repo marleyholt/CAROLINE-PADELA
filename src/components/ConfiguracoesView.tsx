@@ -322,19 +322,7 @@ export const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
             </div>
 
             <div>
-              <label className="font-semibold text-[11px] text-slate-700 block mb-1">InfiniteTag / Handle do Consultório (sem o $)</label>
-              <input
-                type="text"
-                placeholder="Ex: caroline-padela"
-                value={infinitePay.infiniteTag || ''}
-                onChange={(e) => setInfinitePay({ ...infinitePay, infiniteTag: e.target.value.replace(/^\$/, '').trim() })}
-                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-mono bg-slate-50 focus:outline-none text-emerald-800 font-bold"
-              />
-              <span className="text-[10px] text-slate-400 mt-0.5 block">Sua tag no app InfinitePay (ex: <code>caroline-padela</code>)</span>
-            </div>
-
-            <div>
-              <label className="font-semibold text-[11px] text-slate-700 block mb-1">Link de Pagamento / Cobrança Direta (App InfinitePay)</label>
+              <label className="font-semibold text-[11px] text-slate-700 block mb-1">Link Geral de Cartão / Fallback (App InfinitePay)</label>
               <div className="flex gap-1.5">
                 <input
                   type="text"
@@ -354,29 +342,19 @@ export const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
                   <span>Testar</span>
                 </a>
               </div>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">No app InfinitePay do celular: vá em Cobrar &gt; Link de Pagamento e cole aqui o seu link</span>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Usado como reserva caso algum procedimento não tenha link específico cadastrado.</span>
             </div>
 
             <div>
-              <label className="font-semibold text-[11px] text-slate-700 block mb-1">Webhook URL InfinitePay (Opcional)</label>
+              <label className="font-semibold text-[11px] text-slate-700 block mb-1">InfiniteTag / Handle do Consultório (sem o $)</label>
               <input
                 type="text"
-                placeholder="https://seusite.com/api/webhook/infinitepay"
-                value={infinitePay.webhookUrl || ''}
-                onChange={(e) => setInfinitePay({ ...infinitePay, webhookUrl: e.target.value })}
-                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-mono bg-slate-50 focus:outline-none"
+                placeholder="Ex: caroline-padela"
+                value={infinitePay.infiniteTag || ''}
+                onChange={(e) => setInfinitePay({ ...infinitePay, infiniteTag: e.target.value.replace(/^\$/, '').trim() })}
+                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-mono bg-slate-50 focus:outline-none text-emerald-800 font-bold"
               />
-            </div>
-
-            <div>
-              <label className="font-semibold text-[11px] text-slate-700 block mb-1">URL de Redirecionamento (Pós-Pagamento)</label>
-              <input
-                type="text"
-                placeholder="Ex: https://seusite.com ou deixar automático"
-                value={infinitePay.redirectUrl || ''}
-                onChange={(e) => setInfinitePay({ ...infinitePay, redirectUrl: e.target.value })}
-                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-mono bg-slate-50 focus:outline-none"
-              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Sua tag no app InfinitePay (ex: <code>caroline-padela</code>)</span>
             </div>
 
             <div>
@@ -386,26 +364,26 @@ export const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
                 onChange={(e) => setInfinitePay({ ...infinitePay, ambiente: e.target.value as any })}
                 className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs bg-slate-50 focus:outline-none"
               >
-                <option value="producao">Produção (InfinitePay Ativo)</option>
+                <option value="producao">Produção (Ativo)</option>
                 <option value="sandbox">Ambiente de Testes</option>
               </select>
             </div>
           </div>
 
           {/* Dica sobre a InfinitePay */}
-          <div className="bg-emerald-50/70 border border-emerald-200 rounded-md p-2.5 text-[11px] text-emerald-950 space-y-1">
+          <div className="bg-emerald-50/70 border border-emerald-200 rounded-md p-3 text-[11px] text-emerald-950 space-y-1.5">
             <span className="font-bold flex items-center gap-1 text-xs text-emerald-900">
-              <HelpCircle className="w-3.5 h-3.5 text-emerald-700" />
-              Como funciona o pagamento InfinitePay:
+              <HelpCircle className="w-4 h-4 text-emerald-700" />
+              Como estão configurados os pagamentos:
             </span>
             <p>
-              1. <strong>InfiniteTag:</strong> Seu nome de usuário no app (ex: <code>caroline-padela</code> sem $).
+              1. <strong>Pix Instantâneo (Sinal 50%):</strong> É 100% automático. O QR Code dinâmico é gerado com a sua Chave Pix acima e o paciente paga instantaneamente.
             </p>
             <p>
-              2. <strong>Link de Pagamento:</strong> Se você criou um link de cobrança no app da InfinitePay, cole no campo acima (ex: <code>https://link.infinitepay.io/caroline-padela</code>).
+              2. <strong>Cartão de Crédito (Links Fixos por Procedimento):</strong> Os links de pagamento para cartão são cadastrados individualmente dentro de cada procedimento na aba <strong>Procedimentos & Serviços</strong>. Assim, ao escolher um serviço (ou pacote), o paciente é direcionado para o valor exato no app da InfinitePay.
             </p>
             <p>
-              3. <strong>Pix Instantâneo:</strong> O QR Code Pix gerado pelo sistema é 100% automático e creditado diretamente na sua chave.
+              3. <strong>Link Geral de Reserva:</strong> O link configurado nesta tela é usado caso algum procedimento novo ainda não tenha link individual cadastrado.
             </p>
           </div>
 

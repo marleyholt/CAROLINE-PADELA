@@ -654,6 +654,12 @@ export default function App() {
     const ag = agendamentos.find((a) => a.id === agendamentoId);
     if (!ag) return;
 
+    // Se já estiver pago integralmente ou sinal já confirmado, não duplica
+    if (ag.statusPagamento === 'pago_integral') {
+      showToast('Já Quitado', 'Este agendamento já foi quitado integralmente (100%).', 'info');
+      return;
+    }
+
     const updated: Agendamento = {
       ...ag,
       status: 'confirmado',
@@ -677,28 +683,31 @@ export default function App() {
       await saveAgendamentoFirestore(updated);
     }
 
-    // Register financial transaction (50% signal)
-    const tx: TransacaoFinanceira = {
-      id: `fin-sinal-${Date.now()}`,
-      tipo: 'receita',
-      categoria: 'receita_sinal',
-      descricao: `Sinal 50% Pix - ${ag.pacienteNome} (${ag.procedimentoNome})`,
-      valor: ag.valorSinal,
-      data: new Date().toISOString().split('T')[0],
-      formaPagamento: metodo,
-      agendamentoId: ag.id,
-      pacienteId: ag.pacienteId,
-      pacienteNome: ag.pacienteNome,
-      status: 'confirmado',
-      comprovanteRef: `PIX-SINAL-${Math.floor(100000 + Math.random() * 900000)}`,
-      criadoEm: new Date().toISOString(),
-    };
+    // Registra a receita do Sinal de 50% no financeiro se ainda não existir
+    const jaLancadoSinal = financeiro.some((f) => f.agendamentoId === ag.id && f.categoria === 'receita_sinal');
+    if (!jaLancadoSinal) {
+      const tx: TransacaoFinanceira = {
+        id: `fin-sinal-${Date.now()}`,
+        tipo: 'receita',
+        categoria: 'receita_sinal',
+        descricao: `Sinal 50% Pix - ${ag.pacienteNome} (${ag.procedimentoNome})`,
+        valor: ag.valorSinal,
+        data: new Date().toISOString().split('T')[0],
+        formaPagamento: metodo,
+        agendamentoId: ag.id,
+        pacienteId: ag.pacienteId,
+        pacienteNome: ag.pacienteNome,
+        status: 'confirmado',
+        comprovanteRef: `PIX-SINAL-${Math.floor(100000 + Math.random() * 900000)}`,
+        criadoEm: new Date().toISOString(),
+      };
 
-    const listaFin = [tx, ...financeiro.filter((f) => f.id !== tx.id)];
-    setFinanceiro(listaFin);
-    StorageService.saveFinanceiro(listaFin);
-    if (firebaseUser) {
-      await saveFinanceiroFirestore(tx);
+      const listaFin = [tx, ...financeiro.filter((f) => f.id !== tx.id)];
+      setFinanceiro(listaFin);
+      StorageService.saveFinanceiro(listaFin);
+      if (firebaseUser) {
+        await saveFinanceiroFirestore(tx);
+      }
     }
 
     showToast('Sinal 50% Confirmado!', `Recebimento de R$ ${ag.valorSinal.toFixed(2)} registrado na agenda e no financeiro.`, 'success');
@@ -708,12 +717,19 @@ export default function App() {
     const ag = agendamentos.find((a) => a.id === agendamentoId);
     if (!ag) return;
 
+    // Se já estiver pago integralmente, evita duplicar lançamentos
+    if (ag.statusPagamento === 'pago_integral') {
+      showToast('Já Quitado', 'Este agendamento já consta como 100% quitado.', 'info');
+      return;
+    }
+
     const valorTotal = ag.valorTotal || (ag.valorSinal + ag.valorRestante);
 
     const updated: Agendamento = {
       ...ag,
       status: 'confirmado',
       statusPagamento: 'pago_integral',
+      valorRestante: 0,
       metodoSinal: metodo,
       sinalPagoEm: ag.sinalPagoEm || new Date().toISOString(),
       restantePagoEm: new Date().toISOString(),
@@ -734,8 +750,9 @@ export default function App() {
       await saveAgendamentoFirestore(updated);
     }
 
-    // Register financial transaction (100% integral)
-    const tx: TransacaoFinanceira = {
+    // Gerencia as transações financeiras para NÃO duplicar nem somar além de 100%:
+    // Remove qualquer lançamento de sinal ou restante anterior deste mesmo agendamento e lança 1 lançamento único integral de 100%
+    const txIntegral: TransacaoFinanceira = {
       id: `fin-integral-${Date.now()}`,
       tipo: 'receita',
       categoria: 'receita_procedimento',
@@ -751,22 +768,28 @@ export default function App() {
       criadoEm: new Date().toISOString(),
     };
 
-    const listaFin = [tx, ...financeiro.filter((f) => f.id !== tx.id)];
+    // Filtra fora lançamentos anteriores atrelados a este mesmo agendamento para garantir 100% exato
+    const finSemAgendamentoDuplicado = financeiro.filter((f) => f.agendamentoId !== ag.id);
+    const listaFin = [txIntegral, ...finSemAgendamentoDuplicado];
     setFinanceiro(listaFin);
     StorageService.saveFinanceiro(listaFin);
     if (firebaseUser) {
-      await saveFinanceiroFirestore(tx);
+      await saveFinanceiroFirestore(txIntegral);
     }
 
     showToast('Pagamento Integral Confirmado!', `Recebimento total de R$ ${valorTotal.toFixed(2)} registrado com sucesso no financeiro.`, 'success');
   };
 
   const handleReceberRestanteEConcluir = async (ag: Agendamento) => {
+    // Verifica se já estava com pagamento integral antes
+    const jaEraIntegral = ag.statusPagamento === 'pago_integral' || ag.valorRestante === 0;
+
     const updated: Agendamento = {
       ...ag,
       status: 'concluido',
       statusPagamento: 'pago_integral',
-      restantePagoEm: new Date().toISOString(),
+      valorRestante: 0,
+      restantePagoEm: ag.restantePagoEm || new Date().toISOString(),
     };
 
     // Atualiza estado local imediatamente
@@ -784,8 +807,11 @@ export default function App() {
       await saveAgendamentoFirestore(updated);
     }
 
-    // Se ainda havia valor restante pendente a receber
-    if (ag.valorRestante > 0) {
+    // Se NÃO era pagamento integral e havia valor restante pendente (> 0)
+    // E ainda não foi lançada a quitação do restante
+    const jaLancouRestante = financeiro.some((f) => f.agendamentoId === ag.id && (f.categoria === 'receita_restante' || f.categoria === 'receita_procedimento'));
+    
+    if (!jaEraIntegral && ag.valorRestante > 0 && !jaLancouRestante) {
       const tx: TransacaoFinanceira = {
         id: `fin-restante-${Date.now()}`,
         tipo: 'receita',
@@ -808,13 +834,20 @@ export default function App() {
       if (firebaseUser) {
         await saveFinanceiroFirestore(tx);
       }
-    }
 
-    showToast(
-      'Atendimento Concluído & Quitado!',
-      `Recebimento de R$ ${ag.valorRestante.toFixed(2)} registrado no caixa.`,
-      'success'
-    );
+      showToast(
+        'Atendimento Concluído & Quitado!',
+        `Recebimento de R$ ${ag.valorRestante.toFixed(2)} registrado no caixa.`,
+        'success'
+      );
+    } else {
+      // Se já estava 100% pago antes, apenas conclui a sessão sem lançar valor extra
+      showToast(
+        'Sessão Concluída!',
+        `Atendimento de ${ag.pacienteNome} marcado como concluído (100% já quitado).`,
+        'success'
+      );
+    }
   };
 
   const handleAtualizarStatusPagamento = async (agendamentoId: string, novoStatus: StatusPagamento) => {

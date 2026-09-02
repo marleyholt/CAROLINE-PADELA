@@ -134,35 +134,11 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
         })
         .catch(console.warn);
 
-      // 2. Gera Link de Checkout Seguro InfinitePay para Cartão de Crédito com Valor Integral (100%)
-      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
-      const redirectTarget = activeConfig.redirectUrl || `${currentOrigin}${currentPath}`;
-      const finalRedirectUrl = `${redirectTarget}${redirectTarget.includes('?') ? '&' : '?'}order_nsu=${encodeURIComponent(orderNsu)}&status=retorno_infinitepay`;
-
-      criarCheckoutLinkInfinitePay({
-        handle: activeConfig.infiniteTag || 'caroline-padela',
-        valor: valorIntegralCartao,
-        descricaoItem: `Pagamento Integral (Cartão de Crédito) - ${selectedProc.nome} (${nome || 'Paciente'})`,
-        orderNsu,
-        redirectUrl: finalRedirectUrl,
-        webhookUrl: activeConfig.webhookUrl,
-        cliente: {
-          nome: nome || 'Cliente',
-          email: email || undefined,
-          telefone: whatsapp || undefined,
-        },
-      })
-        .then((res) => {
-          setCheckoutUrl(res.checkoutUrl);
-        })
-        .catch(() => {
-          const fallbackTag = (activeConfig.infiniteTag || 'caroline-padela').replace(/^\$/, '').trim();
-          setCheckoutUrl(activeConfig.linkPagamento || `https://infinitepay.io/pay/${fallbackTag}`);
-        })
-        .finally(() => {
-          setLoadingCheckout(false);
-        });
+      // 2. Prepara o Link de Pagamento no Cartão cadastrado no Procedimento
+      const fallbackTag = (activeConfig.infiniteTag || 'caroline-padela').replace(/^\$/, '').trim();
+      const linkProcedimento = selectedProc.linkPagamentoCartao || activeConfig.linkPagamento || `https://link.infinitepay.io/${fallbackTag}`;
+      setCheckoutUrl(linkProcedimento);
+      setLoadingCheckout(false);
     }
   }, [step, selectedProc, nome, email, whatsapp, activeConfig]);
 
@@ -180,10 +156,10 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
 
     try {
       const fallbackTag = (activeConfig.infiniteTag || 'caroline-padela').replace(/^\$/, '').trim();
-      const url = checkoutUrl || activeConfig.linkPagamento || `https://infinitepay.io/pay/${fallbackTag}`;
+      const url = selectedProc.linkPagamentoCartao || checkoutUrl || activeConfig.linkPagamento || `https://link.infinitepay.io/${fallbackTag}`;
       const orderNsu = `ag-${Date.now()}`;
 
-      // No Cartão de Crédito, o pagamento é INTEGRAL (100%)
+      // No Cartão de Crédito, o link de pagamento integral é aberto e o agendamento fica aguardando confirmação do terapeuta
       const novo: Agendamento = {
         id: orderNsu,
         pacienteId: `pac-${Date.now()}`,
@@ -196,15 +172,15 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
         horario: selectedHorario,
         duracaoMinutos: selectedProc.duracaoMinutos,
         valorTotal: selectedProc.precoTotal,
-        valorSinal: selectedProc.precoTotal,
-        valorRestante: 0,
+        valorSinal: selectedProc.valorSinal,
+        valorRestante: selectedProc.precoTotal - selectedProc.valorSinal,
         status: 'aguardando_sinal',
-        statusPagamento: 'pago_integral',
+        statusPagamento: 'a_pagar',
         metodoSinal: 'cartao_credito',
         pixCopiaECola: undefined,
         pixTxId: undefined,
         checkoutUrl: url,
-        observacoes: observacoes || 'Agendado com Pagamento Integral no Cartão de Crédito via InfinitePay.',
+        observacoes: observacoes || 'Agendado no Portal (Cartão de Crédito). Aguardando confirmação de recebimento pelo terapeuta.',
         criadoEm: new Date().toISOString(),
       };
 
@@ -213,11 +189,11 @@ export const PortalPacienteView: React.FC<PortalPacienteViewProps> = ({
 
       // Abre checkout seguro da InfinitePay em nova aba
       window.open(url, '_blank', 'noopener,noreferrer');
-      onShowToast('Ambiente Seguro InfinitePay Aberto!', 'Conclua o pagamento integral no cartão na aba aberta. Seu agendamento será confirmado!', 'info');
+      onShowToast('Link de Pagamento Aberto!', 'Conclua o pagamento integral no cartão na aba aberta. Seu agendamento foi registrado!', 'info');
       setStep(5);
     } catch (err) {
       console.error(err);
-      onShowToast('Erro ao Iniciar Checkout', 'Tente novamente ou use a opção Pix direto.', 'error');
+      onShowToast('Erro ao Iniciar Pagamento', 'Tente novamente ou use a opção Pix direto.', 'error');
     } finally {
       setSalvando(false);
     }

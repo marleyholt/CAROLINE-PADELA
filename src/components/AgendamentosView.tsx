@@ -379,6 +379,15 @@ Estamos com seu horário reservado e preparando a sala com muito carinho. Qualqu
 
     switch (st) {
       case 'a_pagar':
+        if (ag.metodoSinal === 'cartao_credito') {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-900 border border-indigo-200">
+              <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+              <CreditCard className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Aguardando Cartão 100% (R$ {ag.valorTotal.toFixed(2)})</span>
+            </span>
+          );
+        }
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-50 text-rose-800 border border-rose-200">
             <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
@@ -655,19 +664,37 @@ Estamos com seu horário reservado e preparando a sala com muito carinho. Qualqu
                     {/* Ações de Cobrança / Pagamento Conforme o Status */}
                     {statusPag === 'a_pagar' && (
                       <>
-                        <button
-                          id={`btn-pix-ag-${ag.id}`}
-                          onClick={() => onOpenPixModal(ag)}
-                          className="px-3 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs touch-manipulation min-h-[40px] cursor-pointer"
-                          title="Gerar / Ver Cobrança Pix Inter para o Sinal de 50%"
-                        >
-                          <QrCode className="w-4 h-4" />
-                          <span>Cobrar Pix 50%</span>
-                        </button>
+                        {ag.metodoSinal === 'cartao_credito' ? (
+                          <button
+                            id={`btn-confirmar-cartao-${ag.id}`}
+                            onClick={() => {
+                              if (onConfirmarPagamentoIntegral) {
+                                onConfirmarPagamentoIntegral(ag.id, 'cartao_credito');
+                              } else {
+                                onConfirmarSinal(ag.id, 'cartao_credito');
+                              }
+                            }}
+                            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs touch-manipulation min-h-[40px] cursor-pointer"
+                            title="Confirmar recebimento de 100% no Cartão de Crédito"
+                          >
+                            <CreditCard className="w-4 h-4" />
+                            <span>Confirmar 100% Cartão</span>
+                          </button>
+                        ) : (
+                          <button
+                            id={`btn-pix-ag-${ag.id}`}
+                            onClick={() => onOpenPixModal(ag)}
+                            className="px-3 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs touch-manipulation min-h-[40px] cursor-pointer"
+                            title="Gerar / Ver Cobrança Pix Inter para o Sinal de 50%"
+                          >
+                            <QrCode className="w-4 h-4" />
+                            <span>Cobrar Pix 50%</span>
+                          </button>
+                        )}
 
                         <button
                           id={`btn-confirmar-sinal-${ag.id}`}
-                          onClick={() => onConfirmarSinal(ag.id, 'pix_inter')}
+                          onClick={() => onConfirmarSinal(ag.id, ag.metodoSinal === 'cartao_credito' ? 'cartao_credito' : 'pix_inter')}
                           className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all touch-manipulation min-h-[40px] cursor-pointer shadow-2xs"
                           title="Confirmar recebimento de 50% (Sinal recebido e registrado no Financeiro)"
                         >
@@ -679,7 +706,7 @@ Estamos com seu horário reservado e preparando a sala com muito carinho. Qualqu
                           id={`btn-confirmar-integral-${ag.id}`}
                           onClick={() => {
                             if (onConfirmarPagamentoIntegral) {
-                              onConfirmarPagamentoIntegral(ag.id, 'pix_inter');
+                              onConfirmarPagamentoIntegral(ag.id, ag.metodoSinal === 'cartao_credito' ? 'cartao_credito' : 'pix_inter');
                             } else {
                               onConfirmarSinal(ag.id, 'pix_inter');
                             }
@@ -688,7 +715,7 @@ Estamos com seu horário reservado e preparando a sala com muito carinho. Qualqu
                           title="Confirmar Pagamento Integral (100% pago à vista/antecipado)"
                         >
                           <DollarSign className="w-4 h-4 text-emerald-400" />
-                          <span>Pagamento Integral</span>
+                          <span>{ag.metodoSinal === 'cartao_credito' ? '100% Outro Meio' : 'Pagamento Integral'}</span>
                         </button>
                       </>
                     )}

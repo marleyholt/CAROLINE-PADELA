@@ -10,6 +10,7 @@ export interface Procedimento {
   precoTotal: number;
   sinalPercentual: number; // default 50%
   valorSinal: number;
+  linkPagamentoCartao?: string; // Link de pagamento fixo InfinitePay do procedimento para Cartão de Crédito
   descricao: string;
   corTag: string;
   ativo: boolean;

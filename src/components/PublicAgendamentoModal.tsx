@@ -88,48 +88,23 @@ export const PublicAgendamentoModal: React.FC<PublicAgendamentoModalProps> = ({
     ? configClinica.horariosDisponiveis
     : HORARIOS_DISPONIVEIS;
 
-  // Ao entrar no Step 4 (Pagamento), gera Checkout Cartão (Integral 100%) & Pix (Sinal 50%) InfinitePay
+  // Ao entrar no Step 4 (Pagamento), prepara Pix e Link Fixo do Procedimento
   useEffect(() => {
     if (step === 4 && selectedProc) {
       const valorSinalPix = selectedProc.valorSinal;
-      const valorIntegralCartao = selectedProc.precoTotal;
-      const orderNsu = `ag-${Date.now()}`;
-      setLoadingCheckout(true);
+      const fallbackTag = (activeConfig.infiniteTag || 'caroline-padela').replace(/^\$/, '').trim();
+      
+      // Link do Procedimento prioritário (definido na aba de procedimentos)
+      const linkProcedimento = selectedProc.linkPagamentoCartao || activeConfig.linkPagamento || `https://link.infinitepay.io/${fallbackTag}`;
+      setCheckoutUrl(linkProcedimento);
+      setLoadingCheckout(false);
 
-      // 1. Gera dados Pix EMV InfinitePay para o Sinal de 50%
+      // Gera QR Code Pix para o Sinal de 50%
       emitirCobrancaSinalInfinitePay(valorSinalPix, nome || 'Paciente', selectedProc.nome, activeConfig)
         .then((res) => {
           setPixCobranca(res);
         })
         .catch(console.warn);
-
-      // 2. Gera Link de Checkout Externo InfinitePay para Cartão de Crédito com Valor Integral (100%)
-      criarCheckoutLinkInfinitePay({
-        handle: activeConfig.infiniteTag || 'caroline-padela',
-        linkPagamento: activeConfig.linkPagamento,
-        valor: valorIntegralCartao,
-        descricaoItem: `Pagamento Integral (Cartão de Crédito) - ${selectedProc.nome} (${nome || 'Paciente'})`,
-        orderNsu,
-        redirectUrl: typeof window !== 'undefined'
-          ? `${window.location.origin}${window.location.pathname}?order_nsu=${encodeURIComponent(orderNsu)}&status=retorno_infinitepay`
-          : undefined,
-        webhookUrl: activeConfig.webhookUrl,
-        cliente: {
-          nome: nome || 'Cliente',
-          email,
-          telefone: whatsapp,
-        },
-      })
-        .then((res) => {
-          setCheckoutUrl(res.checkoutUrl);
-        })
-        .catch(() => {
-          const fallbackTag = (activeConfig.infiniteTag || 'caroline-padela').replace(/^\$/, '').trim();
-          setCheckoutUrl(activeConfig.linkPagamento || `https://link.infinitepay.io/${fallbackTag}`);
-        })
-        .finally(() => {
-          setLoadingCheckout(false);
-        });
     }
   }, [step, selectedProc, nome, email, whatsapp, activeConfig]);
 
@@ -144,9 +119,10 @@ export const PublicAgendamentoModal: React.FC<PublicAgendamentoModalProps> = ({
   const handleAbrirCheckoutInfinitePay = () => {
     if (!selectedProc) return;
     const fallbackTag = (activeConfig.infiniteTag || 'caroline-padela').replace(/^\$/, '').trim();
-    const url = checkoutUrl || activeConfig.linkPagamento || `https://link.infinitepay.io/${fallbackTag}`;
+    // Prioriza o link cadastrado no próprio procedimento
+    const url = selectedProc.linkPagamentoCartao || checkoutUrl || activeConfig.linkPagamento || `https://link.infinitepay.io/${fallbackTag}`;
     
-    // No Cartão de Crédito, o pagamento é INTEGRAL (100%)
+    // No Cartão de Crédito, o link de pagamento integral é aberto e o agendamento fica aguardando confirmação do terapeuta
     const novo: Agendamento = {
       id: `ag-${Date.now()}`,
       pacienteId: `pac-${Date.now()}`,
@@ -159,15 +135,15 @@ export const PublicAgendamentoModal: React.FC<PublicAgendamentoModalProps> = ({
       horario: selectedHorario,
       duracaoMinutos: selectedProc.duracaoMinutos,
       valorTotal: selectedProc.precoTotal,
-      valorSinal: selectedProc.precoTotal,
-      valorRestante: 0,
+      valorSinal: selectedProc.valorSinal,
+      valorRestante: selectedProc.precoTotal - selectedProc.valorSinal,
       status: 'aguardando_sinal',
-      statusPagamento: 'pago_integral',
+      statusPagamento: 'a_pagar',
       metodoSinal: 'cartao_credito',
       pixCopiaECola: undefined,
       pixTxId: undefined,
       checkoutUrl: url,
-      observacoes: observacoes || 'Agendamento com Pagamento Integral no Cartão de Crédito via InfinitePay.',
+      observacoes: observacoes || 'Agendamento via Cartão de Crédito. Aguardando confirmação de recebimento pelo terapeuta.',
       criadoEm: new Date().toISOString(),
     };
 
@@ -176,7 +152,7 @@ export const PublicAgendamentoModal: React.FC<PublicAgendamentoModalProps> = ({
 
     // Abre checkout da InfinitePay em nova aba
     window.open(url, '_blank', 'noopener,noreferrer');
-    onShowToast('Checkout InfinitePay Aberto', 'Conclua o pagamento integral no cartão na aba aberta. Seu horário será confirmado.', 'info');
+    onShowToast('Link de Pagamento Aberto!', 'Conclua o pagamento integral no cartão na aba aberta. Seu agendamento foi registrado com sucesso.', 'info');
   };
 
   const handleFinalizarAgendamento = (pagoAgora: boolean) => {
