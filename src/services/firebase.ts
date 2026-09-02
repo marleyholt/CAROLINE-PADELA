@@ -156,6 +156,28 @@ export function subscribeToAuthState(callback: (user: User | null, token?: strin
   });
 }
 
+// Helper para higienizar dados e remover campos 'undefined' antes do envio ao Firestore
+export function cleanFirestoreData<T>(obj: T): any {
+  if (obj === null || obj === undefined) {
+    return null;
+  }
+  if (Array.isArray(obj)) {
+    return obj
+      .filter((item) => item !== undefined)
+      .map((item) => cleanFirestoreData(item));
+  }
+  if (typeof obj === 'object' && !(obj instanceof Date)) {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        cleaned[key] = cleanFirestoreData(value);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
 // ================= ACCESS CONTROL SERVICES =================
 export async function getUsuariosAcesso(): Promise<UsuarioTerapeuta[]> {
   try {
@@ -192,7 +214,7 @@ export function subscribeUsuariosAcesso(callback: (usuarios: UsuarioTerapeuta[])
 export async function saveUsuarioAcesso(usuario: UsuarioTerapeuta): Promise<void> {
   try {
     const docRef = doc(db, COLLECTIONS.USUARIOS, usuario.id || usuario.email.replace(/[.@]/g, '_'));
-    await setDoc(docRef, usuario, { merge: true });
+    await setDoc(docRef, cleanFirestoreData(usuario), { merge: true });
   } catch (err: any) {
     console.error('Erro ao salvar usuário de acesso:', err);
   }
@@ -226,7 +248,7 @@ export async function getConfigAcessos(): Promise<ConfiguracaoAcessos> {
 export async function saveConfigAcessos(cfg: ConfiguracaoAcessos): Promise<void> {
   try {
     const docRef = doc(db, COLLECTIONS.CONFIGURACOES, 'acessos_geral');
-    await setDoc(docRef, cfg, { merge: true });
+    await setDoc(docRef, cleanFirestoreData(cfg), { merge: true });
   } catch (err: any) {
     console.error('Erro ao salvar config de acessos:', err);
   }
@@ -255,7 +277,7 @@ export function subscribeAgendamentos(callback: (items: Agendamento[]) => void):
 export async function saveAgendamentoFirestore(ag: Agendamento): Promise<void> {
   try {
     const docRef = doc(db, COLLECTIONS.AGENDAMENTOS, ag.id);
-    await setDoc(docRef, ag, { merge: true });
+    await setDoc(docRef, cleanFirestoreData(ag), { merge: true });
   } catch (err) {
     console.error('Erro ao salvar agendamento:', err);
   }
@@ -291,7 +313,7 @@ export function subscribePacientes(callback: (items: Paciente[]) => void): Unsub
 export async function savePacienteFirestore(pac: Paciente): Promise<void> {
   try {
     const docRef = doc(db, COLLECTIONS.PACIENTES, pac.id);
-    await setDoc(docRef, pac, { merge: true });
+    await setDoc(docRef, cleanFirestoreData(pac), { merge: true });
   } catch (err) {
     console.error('Erro ao salvar paciente:', err);
   }
@@ -327,7 +349,7 @@ export function subscribeEvolucoes(callback: (items: EvolucaoClinica[]) => void)
 export async function saveEvolucaoFirestore(evo: EvolucaoClinica): Promise<void> {
   try {
     const docRef = doc(db, COLLECTIONS.EVOLUCOES, evo.id);
-    await setDoc(docRef, evo, { merge: true });
+    await setDoc(docRef, cleanFirestoreData(evo), { merge: true });
   } catch (err) {
     console.error('Erro ao salvar evolução:', err);
   }
@@ -363,7 +385,7 @@ export function subscribeProcedimentos(callback: (items: Procedimento[]) => void
 export async function saveProcedimentoFirestore(proc: Procedimento): Promise<void> {
   try {
     const docRef = doc(db, COLLECTIONS.PROCEDIMENTOS, proc.id);
-    await setDoc(docRef, proc, { merge: true });
+    await setDoc(docRef, cleanFirestoreData(proc), { merge: true });
   } catch (err) {
     console.error('Erro ao salvar procedimento:', err);
   }
@@ -399,7 +421,7 @@ export function subscribeFinanceiro(callback: (items: TransacaoFinanceira[]) => 
 export async function saveFinanceiroFirestore(tx: TransacaoFinanceira): Promise<void> {
   try {
     const docRef = doc(db, COLLECTIONS.FINANCEIRO, tx.id);
-    await setDoc(docRef, tx, { merge: true });
+    await setDoc(docRef, cleanFirestoreData(tx), { merge: true });
   } catch (err) {
     console.error('Erro ao salvar financeiro:', err);
   }
@@ -446,7 +468,7 @@ export function subscribeClinicaFirestore(callback: (config: ConfiguracaoClinica
 export async function saveClinicaFirestore(config: ConfiguracaoClinica): Promise<void> {
   try {
     const docRef = doc(db, COLLECTIONS.CONFIGURACOES, 'clinica');
-    await setDoc(docRef, config, { merge: true });
+    await setDoc(docRef, cleanFirestoreData(config), { merge: true });
   } catch (err: any) {
     console.warn('Salvamento de config da clínica:', err?.message || err);
   }
@@ -489,10 +511,10 @@ export function subscribeInfinitePayFirestore(callback: (config: ConfiguracaoInf
 export async function saveInfinitePayFirestore(config: ConfiguracaoInfinitePay): Promise<void> {
   try {
     const docRef = doc(db, COLLECTIONS.CONFIGURACOES, 'infinitepay');
-    await setDoc(docRef, config, { merge: true });
+    await setDoc(docRef, cleanFirestoreData(config), { merge: true });
     // Salva também no legado para compatibilidade
     const docRefOld = doc(db, COLLECTIONS.CONFIGURACOES, 'inter');
-    await setDoc(docRefOld, config, { merge: true });
+    await setDoc(docRefOld, cleanFirestoreData(config), { merge: true });
   } catch (err: any) {
     console.warn('Salvamento de config da InfinitePay:', err?.message || err);
   }
@@ -524,7 +546,7 @@ export function subscribePacotesSessoes(callback: (items: PacoteSessoes[]) => vo
 export async function savePacoteSessoesFirestore(pacote: PacoteSessoes): Promise<void> {
   try {
     const docRef = doc(db, COLLECTIONS.PACOTES, pacote.id);
-    await setDoc(docRef, pacote, { merge: true });
+    await setDoc(docRef, cleanFirestoreData(pacote), { merge: true });
   } catch (err) {
     console.error('Erro ao salvar pacote de sessões:', err);
   }
