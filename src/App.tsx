@@ -1073,18 +1073,28 @@ export default function App() {
 
   // Handlers: Financeiro
   const handleNovaTransacao = async (tx: TransacaoFinanceira) => {
-    await saveFinanceiroFirestore(tx);
-    const lista = [tx, ...financeiro.filter((t) => t.id !== tx.id)];
-    setFinanceiro(lista);
-    StorageService.saveFinanceiro(lista);
+    // 1. Atualização Otimista Imediata no Estado Local e LocalStorage
+    setFinanceiro((prev) => {
+      const lista = [tx, ...prev.filter((t) => t.id !== tx.id)];
+      StorageService.saveFinanceiro(lista);
+      return lista;
+    });
+
+    // 2. Persistência no Firestore em segundo plano
+    saveFinanceiroFirestore(tx).catch((err) => {
+      console.warn('Erro ao salvar no Firestore:', err);
+    });
+
     showToast('Lançamento Registrado!', `R$ ${tx.valor.toFixed(2)} - ${tx.descricao}`, 'success');
   };
 
   const handleExcluirTransacao = async (id: string) => {
-    await deleteFinanceiroFirestore(id);
-    const lista = financeiro.filter((t) => t.id !== id);
-    setFinanceiro(lista);
-    StorageService.saveFinanceiro(lista);
+    setFinanceiro((prev) => {
+      const lista = prev.filter((t) => t.id !== id);
+      StorageService.saveFinanceiro(lista);
+      return lista;
+    });
+    deleteFinanceiroFirestore(id).catch(console.warn);
     showToast('Transação Removida', '', 'info');
   };
 

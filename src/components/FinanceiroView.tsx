@@ -68,6 +68,30 @@ const CATEGORIAS_DESPESA_PADRAO = [
   'Outros Custos',
 ];
 
+// Helper seguro para formatar data YYYY-MM-DD no fuso horário local
+const toLocalYYYYMMDD = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+// Helper resiliente para ler valores numéricos (aceita 150, 150,00, 150.00, R$ 150,00)
+const parseMoneyInput = (input: string | number): number => {
+  if (typeof input === 'number') return isNaN(input) ? 0 : input;
+  if (!input) return 0;
+  let clean = input.toString().replace(/[R$\s]/g, '').trim();
+  if (clean.includes(',') && clean.includes('.')) {
+    // Ex: 1.250,50 -> 1250.50
+    clean = clean.replace(/\./g, '').replace(',', '.');
+  } else if (clean.includes(',')) {
+    // Ex: 150,50 -> 150.50
+    clean = clean.replace(',', '.');
+  }
+  const parsed = parseFloat(clean);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
 export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   transacoes,
   procedimentos,
@@ -85,11 +109,14 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   // Navigation sub-tab inside Finance
   const [subTab, setSubTab] = useState<'movimentacoes' | 'pacotes'>('movimentacoes');
 
-  // Period and Type Filters via Dropdown
-  const [periodo, setPeriodo] = useState<PeriodoFiltro>('este_mes');
+  // Period and Type Filters via Dropdown (padrão 'todos' para que qualquer lançamento apareça imediatamente)
+  const [periodo, setPeriodo] = useState<PeriodoFiltro>('todos');
   const [dataInicioCustom, setDataInicioCustom] = useState('');
   const [dataFimCustom, setDataFimCustom] = useState('');
   const [tipoFiltro, setTipoFiltro] = useState<TipoTransacaoFiltro>('todos');
+
+  // Destaque visual temporário para o lançamento recém-criado
+  const [recemCriadaId, setRecemCriadaId] = useState<string | null>(null);
 
   // Modals state
   const [modalNovo, setModalNovo] = useState(false);
@@ -100,7 +127,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   const [formTipo, setFormTipo] = useState<'receita' | 'despesa'>('receita');
   const [formDescricao, setFormDescricao] = useState('');
   const [formValor, setFormValor] = useState('');
-  const [formData, setFormData] = useState(new Date().toISOString().split('T')[0]);
+  const [formData, setFormData] = useState(toLocalYYYYMMDD(new Date()));
   const [formFormaPagto, setFormFormaPagto] = useState<TransacaoFinanceira['formaPagamento']>('dinheiro');
   
   // Custom expense category & predefined
@@ -124,32 +151,24 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   const [pacoteGerarLancamentoFinanceiro, setPacoteGerarLancamentoFinanceiro] = useState(true);
 
   // Form states - Registrar Sessão Realizada
-  const [sessaoData, setSessaoData] = useState(new Date().toISOString().split('T')[0]);
+  const [sessaoData, setSessaoData] = useState(toLocalYYYYMMDD(new Date()));
   const [sessaoHorario, setSessaoHorario] = useState('14:00');
   const [sessaoObservacoes, setSessaoObservacoes] = useState('');
   const [sessaoTerapeuta, setSessaoTerapeuta] = useState(configClinica.nomeTerapeuta || 'Terapeuta');
 
-  // Helpers for date ranges
+  // Helpers for date ranges calculados estritamente no fuso local
   const dateRanges = useMemo(() => {
     const now = new Date();
     const currentDay = now.getDay(); // 0 = Sunday
     const diffToMonday = (currentDay === 0 ? -6 : 1) - currentDay;
 
-    // Esta semana
-    const startThisWeek = new Date(now);
-    startThisWeek.setDate(now.getDate() + diffToMonday);
-    startThisWeek.setHours(0, 0, 0, 0);
-
-    const endThisWeek = new Date(startThisWeek);
-    endThisWeek.setDate(startThisWeek.getDate() + 6);
-    endThisWeek.setHours(23, 59, 59, 999);
+    // Esta semana (segunda a domingo)
+    const startThisWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday);
+    const endThisWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday + 6);
 
     // Semana passada
-    const startLastWeek = new Date(startThisWeek);
-    startLastWeek.setDate(startThisWeek.getDate() - 7);
-
-    const endLastWeek = new Date(startThisWeek);
-    endLastWeek.setDate(startThisWeek.getDate() - 1);
+    const startLastWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday - 7);
+    const endLastWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday - 1);
 
     // Este mês
     const startThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -159,13 +178,11 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
     const startLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
-    const toStr = (d: Date) => d.toISOString().split('T')[0];
-
     return {
-      estaSemana: { inicio: toStr(startThisWeek), fim: toStr(endThisWeek) },
-      semanaPassada: { inicio: toStr(startLastWeek), fim: toStr(endLastWeek) },
-      esteMes: { inicio: toStr(startThisMonth), fim: toStr(endThisMonth) },
-      mesPassado: { inicio: toStr(startLastMonth), fim: toStr(endLastMonth) },
+      estaSemana: { inicio: toLocalYYYYMMDD(startThisWeek), fim: toLocalYYYYMMDD(endThisWeek) },
+      semanaPassada: { inicio: toLocalYYYYMMDD(startLastWeek), fim: toLocalYYYYMMDD(endLastWeek) },
+      esteMes: { inicio: toLocalYYYYMMDD(startThisMonth), fim: toLocalYYYYMMDD(endThisMonth) },
+      mesPassado: { inicio: toLocalYYYYMMDD(startLastMonth), fim: toLocalYYYYMMDD(endLastMonth) },
     };
   }, []);
 
@@ -231,21 +248,37 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   const totalSessoesPendentes = totalSessoesContratadas - totalSessoesRealizadas;
 
   // Handle revenue procedure change
-  const handleSelectProcedimentoReceita = (procId: string) => {
+  const handleSelectProcedimentoReceita = (procId: string, customPacienteId?: string) => {
     setFormProcedimentoId(procId);
     const proc = procedimentos.find((p) => p.id === procId);
+    const targetPacId = customPacienteId !== undefined ? customPacienteId : formPacienteId;
+    const pac = pacientes.find((p) => p.id === targetPacId);
     if (proc) {
-      setFormDescricao(`Atendimento Presencial: ${proc.nome}`);
+      if (pac) {
+        setFormDescricao(`Atendimento: ${proc.nome} - ${pac.nome}`);
+      } else {
+        setFormDescricao(`Atendimento Presencial: ${proc.nome}`);
+      }
       setFormValor(proc.precoTotal.toString());
+    } else {
+      if (pac) {
+        setFormDescricao(`Atendimento Avulso - ${pac.nome}`);
+      } else {
+        setFormDescricao('Serviço Avulso / Procedimento');
+      }
     }
   };
 
   // Handle new transaction submit
   const handleSalvarTransacao = (e: React.FormEvent) => {
     e.preventDefault();
-    const val = parseFloat(formValor);
-    if (isNaN(val) || val <= 0 || !formDescricao.trim()) {
-      onShowToast('Atenção', 'Informe uma descrição e valor válidos.', 'error');
+    const val = parseMoneyInput(formValor);
+    if (val <= 0) {
+      onShowToast('Atenção', 'Informe um valor válido maior que zero.', 'error');
+      return;
+    }
+    if (!formDescricao.trim()) {
+      onShowToast('Atenção', 'Informe uma descrição para o lançamento.', 'error');
       return;
     }
 
@@ -270,36 +303,64 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
     }
 
     const paciente = pacientes.find((p) => p.id === formPacienteId);
+    const dataTransacao = formData || toLocalYYYYMMDD(new Date());
 
     const nova: TransacaoFinanceira = {
       id: `fin-${Date.now()}`,
       tipo: formTipo,
       categoria: categoriaFinal,
       categoriaNome: categoriaNome,
-      descricao: formDescricao,
+      descricao: formDescricao.trim(),
       valor: val,
-      data: formData,
+      data: dataTransacao,
       formaPagamento: formFormaPagto,
-      pacienteId: paciente?.id,
-      pacienteNome: paciente?.nome,
+      pacienteId: paciente?.id || undefined,
+      pacienteNome: paciente?.nome || undefined,
       procedimentoId: formProcedimentoId || undefined,
       status: 'confirmado',
       comprovanteRef:
-        formFormaPagto === 'pix_inter'
-          ? `INTER-PIX-${Math.floor(100000 + Math.random() * 900000)}`
+        formFormaPagto === 'pix_inter' || formFormaPagto === 'pix_infinitepay'
+          ? `PIX-${Math.floor(100000 + Math.random() * 900000)}`
           : undefined,
       criadoEm: new Date().toISOString(),
     };
 
     onNovaTransacao(nova);
+
+    // Ajusta o filtro automaticamente se a data do lançamento não estiver visível no período atual
+    let avisoAjusteFiltro = '';
+    if (periodo === 'este_mes' && (dataTransacao < dateRanges.esteMes.inicio || dataTransacao > dateRanges.esteMes.fim)) {
+      setPeriodo('todos');
+      avisoAjusteFiltro = ' (Filtro ajustado para "Todo o Período")';
+    } else if (periodo === 'esta_semana' && (dataTransacao < dateRanges.estaSemana.inicio || dataTransacao > dateRanges.estaSemana.fim)) {
+      setPeriodo('todos');
+      avisoAjusteFiltro = ' (Filtro ajustado para "Todo o Período")';
+    } else if (periodo === 'semana_passada' && (dataTransacao < dateRanges.semanaPassada.inicio || dataTransacao > dateRanges.semanaPassada.fim)) {
+      setPeriodo('todos');
+      avisoAjusteFiltro = ' (Filtro ajustado para "Todo o Período")';
+    } else if (periodo === 'mes_passado' && (dataTransacao < dateRanges.mesPassado.inicio || dataTransacao > dateRanges.mesPassado.fim)) {
+      setPeriodo('todos');
+      avisoAjusteFiltro = ' (Filtro ajustado para "Todo o Período")';
+    } else if (periodo === 'personalizado' && ((dataInicioCustom && dataTransacao < dataInicioCustom) || (dataFimCustom && dataTransacao > dataFimCustom))) {
+      setPeriodo('todos');
+      avisoAjusteFiltro = ' (Filtro ajustado para "Todo o Período")';
+    }
+
     onShowToast(
-      'Lançamento Registrado!',
-      `${formTipo === 'receita' ? '+' : '-'} R$ ${val.toFixed(2)} (${categoriaNome})`,
+      'Lançamento Registrado com Sucesso!',
+      `${formTipo === 'receita' ? '+' : '-'} R$ ${val.toFixed(2)} - ${nova.descricao}${avisoAjusteFiltro}`,
       'success'
     );
+
+    // Garante visualização na aba de movimentações e destaca a linha
+    setSubTab('movimentacoes');
+    setRecemCriadaId(nova.id);
+    setTimeout(() => setRecemCriadaId(null), 8000);
+
     setModalNovo(false);
     setFormDescricao('');
     setFormValor('');
+    setFormPacienteId('');
     setIsCriandoNovaCategoriaDespesa(false);
     setNovaCategoriaInput('');
   };
@@ -461,8 +522,14 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
             id="btn-novo-lancamento-financeiro"
             type="button"
             onClick={() => {
+              setFormData(toLocalYYYYMMDD(new Date()));
+              setFormPacienteId('');
+              setFormTipo('receita');
               if (procedimentos.length > 0) {
-                handleSelectProcedimentoReceita(procedimentos[0].id);
+                handleSelectProcedimentoReceita(procedimentos[0].id, '');
+              } else {
+                setFormDescricao('Atendimento Presencial');
+                setFormValor('');
               }
               setModalNovo(true);
             }}
@@ -673,6 +740,30 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
             </div>
           </div>
 
+          {/* AVISO DE FILTRO ATIVO (quando houver transações ocultas pelo filtro) */}
+          {transacoesFiltradas.length < transacoes.length && (
+            <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  Filtro ativo: exibindo <strong>{transacoesFiltradas.length}</strong> de <strong>{transacoes.length}</strong> lançamentos no total.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPeriodo('todos');
+                  setTipoFiltro('todos');
+                  setDataInicioCustom('');
+                  setDataFimCustom('');
+                }}
+                className="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg font-bold text-[11px] shrink-0 transition-colors cursor-pointer"
+              >
+                Limpar filtros e ver todos ({transacoes.length})
+              </button>
+            </div>
+          )}
+
           {/* TABELA DETALHADA DO LIVRO CAIXA */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
             <div className="p-3.5 sm:p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -687,7 +778,26 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
             {sortedTransacoes.length === 0 ? (
               <div className="p-8 text-center text-slate-500 text-xs">
                 <DollarSign className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                Nenhum lançamento encontrado para o período e filtros selecionados.
+                <p className="font-semibold text-slate-700">Nenhum lançamento encontrado para o período e filtros selecionados.</p>
+                {transacoes.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-slate-500 mb-2">
+                      Existem <strong>{transacoes.length}</strong> lançamento(s) cadastrado(s) em outras datas ou categorias.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPeriodo('todos');
+                        setTipoFiltro('todos');
+                        setDataInicioCustom('');
+                        setDataFimCustom('');
+                      }}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs cursor-pointer shadow-xs transition-all"
+                    >
+                      Exibir Todos os Lançamentos ({transacoes.length})
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -706,10 +816,18 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                   <tbody className="divide-y divide-slate-100">
                     {sortedTransacoes.map((t) => {
                       const isReceita = t.tipo === 'receita';
+                      const isRecemCriada = t.id === recemCriadaId;
                       const dataFormatada = new Date(t.data + 'T12:00:00Z').toLocaleDateString('pt-BR');
 
                       return (
-                        <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
+                        <tr
+                          key={t.id}
+                          className={`transition-all duration-300 ${
+                            isRecemCriada
+                              ? 'bg-emerald-50/95 border-l-4 border-l-emerald-600 shadow-xs'
+                              : 'hover:bg-slate-50/80'
+                          }`}
+                        >
                           <td className="py-3 px-4 font-semibold text-slate-700 whitespace-nowrap font-mono">
                             {dataFormatada}
                           </td>
@@ -733,11 +851,18 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                           </td>
 
                           <td className="py-3 px-4 text-slate-800 font-medium">
-                            <div>{t.descricao}</div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span>{t.descricao}</span>
+                              {isRecemCriada && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-200 text-emerald-950 animate-pulse">
+                                  ✨ Lançamento Recente
+                                </span>
+                              )}
+                            </div>
                             {t.pacienteNome && (
-                              <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
+                              <div className="text-[10px] text-slate-600 flex items-center gap-1 mt-0.5 font-medium">
                                 <User className="w-3 h-3 text-slate-400" />
-                                {t.pacienteNome}
+                                <span>Paciente: <strong>{t.pacienteNome}</strong></span>
                               </div>
                             )}
                             {t.comprovanteRef && (
@@ -1036,8 +1161,20 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                     </label>
                     <select
                       value={formPacienteId}
-                      onChange={(e) => setFormPacienteId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs text-slate-800 focus:outline-none"
+                      onChange={(e) => {
+                        const selPacId = e.target.value;
+                        setFormPacienteId(selPacId);
+                        const p = pacientes.find((pac) => pac.id === selPacId);
+                        const proc = procedimentos.find((pr) => pr.id === formProcedimentoId);
+                        if (p) {
+                          if (!formDescricao || formDescricao.startsWith('Atendimento Presencial:') || formDescricao.startsWith('Atendimento:')) {
+                            setFormDescricao(`Atendimento: ${proc ? proc.nome : 'Serviço'} - ${p.nome}`);
+                          }
+                        } else if (proc) {
+                          setFormDescricao(`Atendimento Presencial: ${proc.nome}`);
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs text-slate-800 focus:outline-none cursor-pointer"
                     >
                       <option value="">-- Nenhum / Paciente Avulso --</option>
                       {pacientes.map((p) => (
@@ -1121,14 +1258,15 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                 <div>
                   <label className="font-semibold text-slate-700 block mb-1">Valor (R$) *</label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     required
-                    placeholder="0.00"
+                    placeholder="0,00"
                     value={formValor}
                     onChange={(e) => setFormValor(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Aceita vírgula ou ponto (ex: 150,00)</span>
                 </div>
                 <div>
                   <label className="font-semibold text-slate-700 block mb-1">Data</label>
