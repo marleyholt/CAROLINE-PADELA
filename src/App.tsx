@@ -1072,30 +1072,51 @@ export default function App() {
   };
 
   // Handlers: Financeiro
-  const handleNovaTransacao = async (tx: TransacaoFinanceira) => {
+  const handleNovaTransacao = async (txOrList: TransacaoFinanceira | TransacaoFinanceira[]) => {
+    const txs = Array.isArray(txOrList) ? txOrList : [txOrList];
+    if (txs.length === 0) return;
+
     // 1. Atualização Otimista Imediata no Estado Local e LocalStorage
     setFinanceiro((prev) => {
-      const lista = [tx, ...prev.filter((t) => t.id !== tx.id)];
+      const newIds = new Set(txs.map((t) => t.id));
+      const lista = [...txs, ...prev.filter((t) => !newIds.has(t.id))];
       StorageService.saveFinanceiro(lista);
       return lista;
     });
 
-    // 2. Persistência no Firestore em segundo plano
-    saveFinanceiroFirestore(tx).catch((err) => {
-      console.warn('Erro ao salvar no Firestore:', err);
-    });
+    // 2. Persistência no Firestore em segundo plano para cada transação
+    for (const tx of txs) {
+      saveFinanceiroFirestore(tx).catch((err) => {
+        console.warn('Erro ao salvar no Firestore:', err);
+      });
+    }
 
-    showToast('Lançamento Registrado!', `R$ ${tx.valor.toFixed(2)} - ${tx.descricao}`, 'success');
+    if (txs.length === 1) {
+      showToast('Lançamento Registrado!', `R$ ${txs[0].valor.toFixed(2)} - ${txs[0].descricao}`, 'success');
+    } else {
+      showToast('Parcelamento Registrado!', `${txs.length} parcelas registradas com sucesso!`, 'success');
+    }
   };
 
-  const handleExcluirTransacao = async (id: string) => {
+  const handleExcluirTransacao = async (idOrIds: string | string[]) => {
+    const ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
+    const idsSet = new Set(ids);
+
     setFinanceiro((prev) => {
-      const lista = prev.filter((t) => t.id !== id);
+      const lista = prev.filter((t) => !idsSet.has(t.id));
       StorageService.saveFinanceiro(lista);
       return lista;
     });
-    deleteFinanceiroFirestore(id).catch(console.warn);
-    showToast('Transação Removida', '', 'info');
+
+    for (const id of ids) {
+      deleteFinanceiroFirestore(id).catch(console.warn);
+    }
+
+    if (ids.length > 1) {
+      showToast('Parcelas Removidas', `${ids.length} parcelas foram excluídas com sucesso.`, 'info');
+    } else {
+      showToast('Transação Removida', '', 'info');
+    }
   };
 
   // Handlers: Pacotes de Sessões

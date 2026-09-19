@@ -45,16 +45,16 @@ interface FinanceiroViewProps {
   pacotesSessoes: PacoteSessoes[];
   configClinica: ConfiguracaoClinica;
   configInter: ConfiguracaoInter;
-  onNovaTransacao: (transacao: TransacaoFinanceira) => void;
-  onExcluirTransacao: (transacaoId: string) => void;
+  onNovaTransacao: (transacao: TransacaoFinanceira | TransacaoFinanceira[]) => void;
+  onExcluirTransacao: (transacaoId: string | string[]) => void;
   onNovoPacote: (pacote: PacoteSessoes) => void;
   onAtualizarPacote: (pacote: PacoteSessoes) => void;
   onExcluirPacote: (pacoteId: string) => void;
   onShowToast: (title: string, message?: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-export type PeriodoFiltro = 'esta_semana' | 'semana_passada' | 'este_mes' | 'mes_passado' | 'todos' | 'personalizado';
-export type TipoTransacaoFiltro = 'todos' | 'receita' | 'despesa';
+export type PeriodoFiltro = 'esta_semana' | 'semana_passada' | 'este_mes' | 'mes_passado' | 'proximo_mes' | 'todos' | 'personalizado';
+export type TipoTransacaoFiltro = 'todos' | 'receita' | 'despesa' | 'parceladas';
 
 const CATEGORIAS_DESPESA_PADRAO = [
   'Insumos & Descartáveis',
@@ -74,6 +74,28 @@ const toLocalYYYYMMDD = (d: Date): string => {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+};
+
+// Helper para calcular datas de vencimento mensais preservando o dia de vencimento da fatura do cartão
+const calculateInstallmentDates = (startDateStr: string, count: number): string[] => {
+  const [startYear, startMonth, startDay] = (startDateStr || toLocalYYYYMMDD(new Date())).split('-').map(Number);
+  const dates: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const targetMonthIndex = (startMonth - 1) + i;
+    const targetYear = startYear + Math.floor(targetMonthIndex / 12);
+    const targetMonth = (targetMonthIndex % 12); // 0-11
+    
+    // Obter quantidade de dias no mês alvo para não estourar (ex: dia 31 em abril vira 30)
+    const daysInTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+    const actualDay = Math.min(startDay, daysInTargetMonth);
+    
+    const y = targetYear;
+    const m = String(targetMonth + 1).padStart(2, '0');
+    const d = String(actualDay).padStart(2, '0');
+    dates.push(`${y}-${m}-${d}`);
+  }
+  return dates;
 };
 
 // Helper resiliente para ler valores numéricos (aceita 150, 150,00, 150.00, R$ 150,00)
@@ -123,12 +145,24 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   const [modalNovoPacote, setModalNovoPacote] = useState(false);
   const [modalRegistrarSessao, setModalRegistrarSessao] = useState<PacoteSessoes | null>(null);
 
+  // Modal para exclusão inteligente de parcelamento
+  const [modalExcluirParcelamento, setModalExcluirParcelamento] = useState<{
+    transacao: TransacaoFinanceira;
+    todasParcelas: TransacaoFinanceira[];
+  } | null>(null);
+
   // Form states - Transação
   const [formTipo, setFormTipo] = useState<'receita' | 'despesa'>('receita');
   const [formDescricao, setFormDescricao] = useState('');
   const [formValor, setFormValor] = useState('');
   const [formData, setFormData] = useState(toLocalYYYYMMDD(new Date()));
   const [formFormaPagto, setFormFormaPagto] = useState<TransacaoFinanceira['formaPagamento']>('dinheiro');
+
+  // Form states - Despesa Parcelada (Cartão de Crédito / Fatura)
+  const [formIsParcelado, setFormIsParcelado] = useState(false);
+  const [formNumeroParcelas, setFormNumeroParcelas] = useState(2);
+  const [formDataPrimeiroVencimento, setFormDataPrimeiroVencimento] = useState(toLocalYYYYMMDD(new Date()));
+  const [formModoValor, setFormModoValor] = useState<'total' | 'parcela'>('total');
   
   // Custom expense category & predefined
   const [formCategoriaDespesa, setFormCategoriaDespesa] = useState(CATEGORIAS_DESPESA_PADRAO[0]);
@@ -178,11 +212,16 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
     const startLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
+    // Próximo mês (ideal para previsão de faturas e parcelas futuras)
+    const startNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const endNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+
     return {
       estaSemana: { inicio: toLocalYYYYMMDD(startThisWeek), fim: toLocalYYYYMMDD(endThisWeek) },
       semanaPassada: { inicio: toLocalYYYYMMDD(startLastWeek), fim: toLocalYYYYMMDD(endLastWeek) },
       esteMes: { inicio: toLocalYYYYMMDD(startThisMonth), fim: toLocalYYYYMMDD(endThisMonth) },
       mesPassado: { inicio: toLocalYYYYMMDD(startLastMonth), fim: toLocalYYYYMMDD(endLastMonth) },
+      proximoMes: { inicio: toLocalYYYYMMDD(startNextMonth), fim: toLocalYYYYMMDD(endNextMonth) },
     };
   }, []);
 
@@ -190,7 +229,9 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   const transacoesFiltradas = useMemo(() => {
     return transacoes.filter((t) => {
       // Type filter
-      if (tipoFiltro !== 'todos' && t.tipo !== tipoFiltro) return false;
+      if (tipoFiltro === 'receita' && t.tipo !== 'receita') return false;
+      if (tipoFiltro === 'despesa' && t.tipo !== 'despesa') return false;
+      if (tipoFiltro === 'parceladas' && !t.parcelado) return false;
 
       // Period filter
       if (periodo === 'esta_semana') {
@@ -204,6 +245,9 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
       }
       if (periodo === 'mes_passado') {
         return t.data >= dateRanges.mesPassado.inicio && t.data <= dateRanges.mesPassado.fim;
+      }
+      if (periodo === 'proximo_mes') {
+        return t.data >= dateRanges.proximoMes.inicio && t.data <= dateRanges.proximoMes.fim;
       }
       if (periodo === 'personalizado') {
         if (dataInicioCustom && t.data < dataInicioCustom) return false;
@@ -229,6 +273,12 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
   const totalDespesas = useMemo(() => {
     return transacoesFiltradas
       .filter((t) => t.tipo === 'despesa')
+      .reduce((acc, t) => acc + t.valor, 0);
+  }, [transacoesFiltradas]);
+
+  const totalDespesasParceladas = useMemo(() => {
+    return transacoesFiltradas
+      .filter((t) => t.tipo === 'despesa' && t.parcelado)
       .reduce((acc, t) => acc + t.valor, 0);
   }, [transacoesFiltradas]);
 
@@ -304,6 +354,82 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
 
     const paciente = pacientes.find((p) => p.id === formPacienteId);
     const dataTransacao = formData || toLocalYYYYMMDD(new Date());
+
+    // Se for uma Despesa Parcelada (Cartão de Crédito / Fatura)
+    if (formTipo === 'despesa' && formIsParcelado && formNumeroParcelas > 1) {
+      const parcelamentoId = `parc-${Date.now()}`;
+      const dataVencInicial = formDataPrimeiroVencimento || formData || toLocalYYYYMMDD(new Date());
+      const datas = calculateInstallmentDates(dataVencInicial, formNumeroParcelas);
+
+      let totalCompra = 0;
+      let valorBasePorParcela = 0;
+      let restoCentavos = 0;
+
+      if (formModoValor === 'total') {
+        totalCompra = val;
+        valorBasePorParcela = Math.floor((totalCompra / formNumeroParcelas) * 100) / 100;
+        restoCentavos = Math.round((totalCompra - valorBasePorParcela * formNumeroParcelas) * 100) / 100;
+      } else {
+        valorBasePorParcela = val;
+        totalCompra = Math.round(valorBasePorParcela * formNumeroParcelas * 100) / 100;
+      }
+
+      const listaNovasParcelas: TransacaoFinanceira[] = datas.map((dtVenc, idx) => {
+        const numParcela = idx + 1;
+        // Na primeira parcela, ajusta eventuais centavos de arredondamento
+        const valorDestaParcela =
+          formModoValor === 'total' && idx === 0
+            ? Math.round((valorBasePorParcela + restoCentavos) * 100) / 100
+            : valorBasePorParcela;
+
+        return {
+          id: `fin-${Date.now()}-${numParcela}-${Math.random().toString(36).substring(2, 6)}`,
+          tipo: 'despesa',
+          categoria: categoriaFinal,
+          categoriaNome: categoriaNome,
+          descricao: `${formDescricao.trim()} (${numParcela}/${formNumeroParcelas})`,
+          valor: valorDestaParcela,
+          data: dtVenc, // Cada parcela fica agendada na data de vencimento da fatura correspondente
+          formaPagamento: formFormaPagto || 'cartao_credito',
+          status: 'confirmado',
+          criadoEm: new Date().toISOString(),
+          parcelado: true,
+          parcelaAtual: numParcela,
+          totalParcelas: formNumeroParcelas,
+          parcelamentoId: parcelamentoId,
+          dataVencimentoFatura: dtVenc,
+          valorTotalParcelamento: totalCompra,
+        };
+      });
+
+      onNovaTransacao(listaNovasParcelas);
+
+      // Se o período filtrado for restrito e não abranger todo o parcelamento, ajusta para 'todos'
+      if (periodo !== 'todos') {
+        setPeriodo('todos');
+      }
+
+      onShowToast(
+        'Despesa Parcelada com Sucesso!',
+        `${formNumeroParcelas} parcelas de R$ ${valorBasePorParcela.toFixed(2)} (Total: R$ ${totalCompra.toFixed(2)}) lançadas com vencimento no dia ${dataVencInicial.split('-')[2]} de cada mês.`,
+        'success'
+      );
+
+      setSubTab('movimentacoes');
+      setRecemCriadaId(listaNovasParcelas[0]?.id || null);
+      setTimeout(() => setRecemCriadaId(null), 8000);
+
+      setModalNovo(false);
+      setFormDescricao('');
+      setFormValor('');
+      setFormIsParcelado(false);
+      setFormNumeroParcelas(2);
+      setFormModoValor('total');
+      setFormPacienteId('');
+      setIsCriandoNovaCategoriaDespesa(false);
+      setNovaCategoriaInput('');
+      return;
+    }
 
     const nova: TransacaoFinanceira = {
       id: `fin-${Date.now()}`,
@@ -600,6 +726,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                     <option value="esta_semana">📅 Esta Semana</option>
                     <option value="semana_passada">📅 Semana Passada</option>
                     <option value="este_mes">🗓️ Este Mês</option>
+                    <option value="proximo_mes">🗓️ Próximo Mês (Faturas Futuras)</option>
                     <option value="mes_passado">🗓️ Mês Passado</option>
                     <option value="todos">🌐 Todo o Período</option>
                     <option value="personalizado">🔍 Período Personalizado...</option>
@@ -607,13 +734,13 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                 </div>
               </div>
 
-              {/* Dropdown de Tipo de Transação (Todos / Entradas / Custos) */}
+              {/* Dropdown de Tipo de Transação (Todos / Entradas / Custos / Parceladas) */}
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 shrink-0">
                   <Filter className="w-4 h-4 text-emerald-600" />
                   <span>Tipo de Lançamento:</span>
                 </div>
-                <div className="relative flex-1 sm:w-48">
+                <div className="relative flex-1 sm:w-56">
                   <select
                     id="select-tipo-transacao"
                     value={tipoFiltro}
@@ -623,6 +750,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                     <option value="todos">🔹 Todos os Lançamentos</option>
                     <option value="receita">🟢 Apenas Entradas (Receitas)</option>
                     <option value="despesa">🔴 Apenas Custos (Despesas)</option>
+                    <option value="parceladas">💳 Apenas Parceladas (Faturas de Cartão)</option>
                   </select>
                 </div>
               </div>
@@ -698,9 +826,15 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
               <div className="text-2xl font-bold font-mono text-rose-600">
                 R$ {totalDespesas.toFixed(2)}
               </div>
-              <p className="text-[11px] text-slate-500">
-                {transacoesFiltradas.filter((t) => t.tipo === 'despesa').length} custo(s) e insumos
-              </p>
+              <div className="flex items-center justify-between text-[11px] text-slate-500 flex-wrap gap-1">
+                <span>{transacoesFiltradas.filter((t) => t.tipo === 'despesa').length} lançamento(s)</span>
+                {totalDespesasParceladas > 0 && (
+                  <span className="text-indigo-600 font-semibold flex items-center gap-1" title="Parcelas de fatura de cartão no período filtrado">
+                    <CreditCard className="w-3 h-3" />
+                    R$ {totalDespesasParceladas.toFixed(2)} em faturas
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Lucro Líquido Real */}
@@ -851,14 +985,25 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                           </td>
 
                           <td className="py-3 px-4 text-slate-800 font-medium">
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span>{t.descricao}</span>
+                              {t.parcelado && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  <CreditCard className="w-3 h-3 text-indigo-600" />
+                                  Fatura {t.parcelaAtual}/{t.totalParcelas}
+                                </span>
+                              )}
                               {isRecemCriada && (
                                 <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-200 text-emerald-950 animate-pulse">
                                   ✨ Lançamento Recente
                                 </span>
                               )}
                             </div>
+                            {t.parcelado && t.valorTotalParcelamento && (
+                              <div className="text-[10px] text-slate-500 mt-0.5">
+                                Valor total da compra parcelada: <strong className="font-mono text-slate-700">R$ {t.valorTotalParcelamento.toFixed(2)}</strong>
+                              </div>
+                            )}
                             {t.pacienteNome && (
                               <div className="text-[10px] text-slate-600 flex items-center gap-1 mt-0.5 font-medium">
                                 <User className="w-3 h-3 text-slate-400" />
@@ -875,7 +1020,7 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                           <td className="py-3 px-4 whitespace-nowrap">
                             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
                               {(t.formaPagamento === 'pix_infinitepay' || t.formaPagamento === 'pix_inter') && '⚡ Pix InfinitePay'}
-                              {t.formaPagamento === 'cartao_credito' && '💳 Cartão Crédito (InfinitePay)'}
+                              {t.formaPagamento === 'cartao_credito' && '💳 Cartão Crédito'}
                               {t.formaPagamento === 'cartao_debito' && '💳 Cartão Débito'}
                               {t.formaPagamento === 'dinheiro' && '💵 Dinheiro'}
                               {t.formaPagamento === 'transferencia' && '🏦 Transferência'}
@@ -897,7 +1042,21 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                           <td className="py-3 px-4 text-center whitespace-nowrap">
                             <button
                               type="button"
-                              onClick={() => onExcluirTransacao(t.id)}
+                              onClick={() => {
+                                if (t.parcelado && t.parcelamentoId) {
+                                  const grupo = transacoes.filter((tx) => tx.parcelamentoId === t.parcelamentoId);
+                                  if (grupo.length > 1) {
+                                    setModalExcluirParcelamento({
+                                      transacao: t,
+                                      todasParcelas: grupo,
+                                    });
+                                    return;
+                                  }
+                                }
+                                if (window.confirm(`Deseja realmente excluir o lançamento "${t.descricao}"?`)) {
+                                  onExcluirTransacao(t.id);
+                                }
+                              }}
                               className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                               title="Excluir lançamento"
                             >
@@ -1288,13 +1447,171 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-slate-50 focus:outline-none cursor-pointer"
                 >
                   <option value="pix_infinitepay">⚡ Pix Instantâneo InfinitePay</option>
-                  <option value="cartao_credito">💳 Cartão de Crédito (InfinitePay / Link)</option>
+                  <option value="cartao_credito">💳 Cartão de Crédito (Fatura / Link)</option>
                   <option value="dinheiro">💵 Dinheiro Presencial</option>
                   <option value="cartao_debito">💳 Cartão de Débito</option>
                   <option value="transferencia">🏦 Transferência Bancária</option>
                   <option value="boleto">📄 Boleto</option>
                 </select>
               </div>
+
+              {/* Opção de Despesa Parcelada (Cartão de Crédito / Fatura) */}
+              {formTipo === 'despesa' && (
+                <div className="bg-indigo-50/70 p-3.5 rounded-2xl border border-indigo-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-indigo-950 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={formIsParcelado}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormIsParcelado(checked);
+                          if (checked) {
+                            setFormFormaPagto('cartao_credito');
+                            if (!formDataPrimeiroVencimento) {
+                              setFormDataPrimeiroVencimento(formData || toLocalYYYYMMDD(new Date()));
+                            }
+                          }
+                        }}
+                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <span className="flex items-center gap-1.5">
+                        <CreditCard className="w-4 h-4 text-indigo-600" />
+                        Despesa Parcelada (ex: Cartão de Crédito)
+                      </span>
+                    </label>
+                    {formIsParcelado && (
+                      <span className="text-[10px] font-bold bg-indigo-200 text-indigo-900 px-2 py-0.5 rounded-full font-mono">
+                        {formNumeroParcelas}x
+                      </span>
+                    )}
+                  </div>
+
+                  {formIsParcelado && (
+                    <div className="space-y-3 pt-2 border-t border-indigo-200/80 animate-in fade-in duration-150">
+                      {/* Modo de Valor e Parcelas */}
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="font-semibold text-indigo-950 block mb-1">
+                            Qtd. de Parcelas
+                          </label>
+                          <select
+                            value={formNumeroParcelas}
+                            onChange={(e) => setFormNumeroParcelas(Math.max(2, parseInt(e.target.value) || 2))}
+                            className="w-full px-2.5 py-1.5 rounded-xl border border-indigo-300 bg-white text-xs font-bold text-indigo-950 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                          >
+                            {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24].map((num) => (
+                              <option key={num} value={num}>
+                                {num}x vezes
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="font-semibold text-indigo-950 block mb-1">
+                            1º Vencimento (Fatura) *
+                          </label>
+                          <input
+                            type="date"
+                            required={formIsParcelado}
+                            value={formDataPrimeiroVencimento}
+                            onChange={(e) => setFormDataPrimeiroVencimento(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-xl border border-indigo-300 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Modo do Valor: Total ou Por Parcela */}
+                      <div>
+                        <label className="font-semibold text-indigo-950 block mb-1">
+                          O valor informado de {formValor ? `R$ ${formValor}` : 'R$ 0,00'} representa:
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label
+                            className={`flex items-center gap-1.5 p-2 rounded-xl border cursor-pointer text-[11px] transition-all ${
+                              formModoValor === 'total'
+                                ? 'bg-white border-indigo-500 font-bold text-indigo-950 shadow-xs'
+                                : 'bg-indigo-100/50 border-transparent text-indigo-800 hover:bg-white'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="modoValor"
+                              value="total"
+                              checked={formModoValor === 'total'}
+                              onChange={() => setFormModoValor('total')}
+                              className="text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span>Valor Total da Compra</span>
+                          </label>
+
+                          <label
+                            className={`flex items-center gap-1.5 p-2 rounded-xl border cursor-pointer text-[11px] transition-all ${
+                              formModoValor === 'parcela'
+                                ? 'bg-white border-indigo-500 font-bold text-indigo-950 shadow-xs'
+                                : 'bg-indigo-100/50 border-transparent text-indigo-800 hover:bg-white'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="modoValor"
+                              value="parcela"
+                              checked={formModoValor === 'parcela'}
+                              onChange={() => setFormModoValor('parcela')}
+                              className="text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span>Valor de Cada Parcela</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Caixa de Pré-visualização do Cronograma de Faturas */}
+                      {(() => {
+                        const parsedVal = parseMoneyInput(formValor);
+                        if (parsedVal <= 0) return null;
+
+                        let totalCalculado = 0;
+                        let porParcelaCalculado = 0;
+                        if (formModoValor === 'total') {
+                          totalCalculado = parsedVal;
+                          porParcelaCalculado = totalCalculado / formNumeroParcelas;
+                        } else {
+                          porParcelaCalculado = parsedVal;
+                          totalCalculado = porParcelaCalculado * formNumeroParcelas;
+                        }
+
+                        const dataBase = formDataPrimeiroVencimento || formData || toLocalYYYYMMDD(new Date());
+                        const previewDatas = calculateInstallmentDates(dataBase, Math.min(formNumeroParcelas, 4));
+
+                        return (
+                          <div className="bg-white p-2.5 rounded-xl border border-indigo-200 text-[11px] space-y-1.5">
+                            <div className="flex items-center justify-between text-indigo-900 font-bold">
+                              <span>Plano de Faturas: {formNumeroParcelas}x de R$ {porParcelaCalculado.toFixed(2)}</span>
+                              <span className="font-mono text-indigo-700">Total: R$ {totalCalculado.toFixed(2)}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 flex flex-col gap-0.5 pt-1 border-t border-slate-100">
+                              {previewDatas.map((dt, idx) => (
+                                <div key={idx} className="flex items-center justify-between">
+                                  <span>Parcela {idx + 1}/{formNumeroParcelas}:</span>
+                                  <span className="font-mono text-slate-700 font-semibold">
+                                    Vencimento {new Date(dt + 'T12:00:00Z').toLocaleDateString('pt-BR')} (R$ {porParcelaCalculado.toFixed(2)})
+                                  </span>
+                                </div>
+                              ))}
+                              {formNumeroParcelas > 4 && (
+                                <div className="text-slate-400 italic text-[9px] text-right">
+                                  + {formNumeroParcelas - 4} parcela(s) subsequente(s)...
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
                 <button
@@ -1583,6 +1900,102 @@ export const FinanceiroView: React.FC<FinanceiroViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================= MODAL: EXCLUSÃO DE DESPESA PARCELADA ======================= */}
+      {modalExcluirParcelamento && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white p-4 sm:p-5 flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center">
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm sm:text-base">Excluir Despesa Parcelada</h3>
+                  <span className="text-[10px] text-slate-400">
+                    Fatura {modalExcluirParcelamento.transacao.parcelaAtual} de {modalExcluirParcelamento.transacao.totalParcelas}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalExcluirParcelamento(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <p className="text-slate-700">
+                O lançamento <strong>"{modalExcluirParcelamento.transacao.descricao}"</strong> faz parte de uma despesa parcelada no cartão com um total de <strong>{modalExcluirParcelamento.todasParcelas.length} parcelas</strong> cadastradas.
+              </p>
+
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1">
+                <div className="flex justify-between text-slate-600">
+                  <span>Valor desta parcela:</span>
+                  <strong className="font-mono text-slate-900">R$ {modalExcluirParcelamento.transacao.valor.toFixed(2)}</strong>
+                </div>
+                {modalExcluirParcelamento.transacao.valorTotalParcelamento && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Valor total do parcelamento:</span>
+                    <strong className="font-mono text-indigo-700">R$ {modalExcluirParcelamento.transacao.valorTotalParcelamento.toFixed(2)}</strong>
+                  </div>
+                )}
+                <div className="flex justify-between text-slate-600">
+                  <span>Vencimento desta parcela:</span>
+                  <span className="font-mono text-slate-800">
+                    {new Date(modalExcluirParcelamento.transacao.data + 'T12:00:00Z').toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onExcluirTransacao(modalExcluirParcelamento.transacao.id);
+                    onShowToast(
+                      'Parcela Excluída',
+                      `A parcela ${modalExcluirParcelamento.transacao.parcelaAtual}/${modalExcluirParcelamento.transacao.totalParcelas} foi removida. As demais permanecem no caixa.`,
+                      'info'
+                    );
+                    setModalExcluirParcelamento(null);
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-all cursor-pointer text-center"
+                >
+                  Excluir Apenas Esta Parcela ({modalExcluirParcelamento.transacao.parcelaAtual}/{modalExcluirParcelamento.transacao.totalParcelas})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ids = modalExcluirParcelamento.todasParcelas.map((tx) => tx.id);
+                    onExcluirTransacao(ids);
+                    onShowToast(
+                      'Parcelamento Completo Excluído',
+                      `Todas as ${ids.length} parcelas desta compra foram excluídas do caixa.`,
+                      'info'
+                    );
+                    setModalExcluirParcelamento(null);
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-all cursor-pointer text-center"
+                >
+                  Excluir Todas as {modalExcluirParcelamento.todasParcelas.length} Parcelas do Cartão
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModalExcluirParcelamento(null)}
+                  className="w-full py-2 text-slate-500 hover:text-slate-700 font-semibold cursor-pointer text-center"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

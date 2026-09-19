@@ -196,7 +196,7 @@ export interface TransacaoFinanceira {
   descricao: string;
   valor: number;
   data: string; // YYYY-MM-DD
-  formaPagamento: 'pix_infinitepay' | 'pix_inter' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'transferencia' | 'boleto';
+  formaPagamento: 'pix_infinitepay' | 'pix_inter' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'transferencia' | 'boleto' | 'pacote';
   agendamentoId?: string;
   pacienteId?: string;
   pacienteNome?: string;
@@ -205,6 +205,13 @@ export interface TransacaoFinanceira {
   status: 'confirmado' | 'pendente';
   comprovanteRef?: string;
   criadoEm: string;
+  // Gestão de Compras / Despesas Parceladas (Fatura do Cartão)
+  parcelado?: boolean;
+  parcelaAtual?: number; // Ex: 1, 2, 3...
+  totalParcelas?: number; // Ex: 6
+  parcelamentoId?: string; // Identificador único do grupo de parcelas
+  dataVencimentoFatura?: string; // Data de vencimento da fatura
+  valorTotalParcelamento?: number; // Valor integral da compra parcelada
 }
 
 export interface ExcecaoDataDisponibilidade {
